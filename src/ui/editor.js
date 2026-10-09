@@ -1,17 +1,17 @@
 /**
  * Edit panel: changes an item's metadata in Stash from the TV.
  *
- * What can be edited (things that work well with a remote):
- * - scenes: title, rating, O-count, organized, studio, tags, performers,
- *   groups (with the scene's number in each), galleries and markers
- *   (see markerEditor.js)
- * - images: title, rating, O-count, organized, studio, performers, tags and
- *   galleries
- * - galleries: title, rating, organized, studio, performers, tags and scenes
- * - groups: rating, studio, tags, the groups they are part of and sub-groups
- * - performers: rating, favourite and tags
- * - studios: rating, favourite, parent studio and tags
- * - tags: favourite, parent tags and sub-tags
+ * What can be edited (see FIELDS for the exact lines per kind):
+ * - details: titles/names, codes, dates, director, photographer, longer
+ *   descriptions, links (URLs), aliases, performer gender/country/height…
+ * - images from a URL (performers, studios, tags, group covers) and a
+ *   scene's cover from a video frame
+ * - ratings, favourites, O-count and Organized
+ * - links: studio, performers, tags, galleries, scenes, groups (with the
+ *   scene's number), markers (see markerEditor.js)
+ * - hierarchies: parent tags/sub-tags, parent studio, containing groups and
+ *   sub-groups
+ * - scenes can also be scraped (see scraper.js)
  *
  * Tags, performers and studios that don't exist yet can be created from the
  * pickers (name only).
@@ -29,8 +29,9 @@ import { pickPerformer, pickStudio, pickTag } from './panel.js';
 import { getSettings } from '../settings.js';
 import * as api from '../api/stash.js';
 import {
-  countOf, formatDate, formatDuration, galleryTitle, imageTitle, sceneTitle, stars,
+  countOf, formatDate, formatDuration, galleryTitle, imageTitle, parseDuration, sceneTitle, stars,
 } from '../util/format.js';
+import { scrapeScene } from './scraper.js';
 import {
   addMarker, askTime, editMarker, markerName, markerTime,
 } from './markerEditor.js';
@@ -46,15 +47,44 @@ const RATING_OPTIONS = [{ label: 'No rating', value: null }].concat(
 );
 
 /** Field definitions per kind, in display order. */
+/**
+ * Field definitions per kind, in display order. Entries starting with '#'
+ * are section headings.
+ */
 const FIELDS = {
-  scene: ['title', 'rating', 'o', 'organized', 'studio', 'tags', 'performers', 'groups', 'galleries', 'markers'],
-  image: ['title', 'rating', 'o', 'organized', 'studio', 'performers', 'tags', 'galleries'],
-  gallery: ['title', 'rating', 'organized', 'studio', 'performers', 'tags', 'scenes'],
-  group: ['rating', 'studio', 'tags', 'containing', 'subgroups'],
-  performer: ['rating', 'favorite', 'tags'],
-  studio: ['rating', 'favorite', 'parent', 'tags'],
-  tag: ['favorite', 'parents', 'children'],
+  scene: ['#Details', 'title', 'code', 'date', 'director', 'details', 'urls',
+    '#Rating', 'rating', 'o', 'organized',
+    '#Links', 'studio', 'performers', 'tags', 'groups', 'galleries', 'markers',
+    '#Tools', 'cover', 'scrape'],
+  image: ['#Details', 'title', 'code', 'date', 'photographer', 'details', 'urls',
+    '#Rating', 'rating', 'o', 'organized',
+    '#Links', 'studio', 'performers', 'tags', 'galleries'],
+  gallery: ['#Details', 'title', 'code', 'date', 'photographer', 'details', 'urls',
+    '#Rating', 'rating', 'organized',
+    '#Links', 'studio', 'performers', 'tags', 'scenes'],
+  group: ['#Details', 'name', 'aliasText', 'date', 'duration', 'director', 'synopsis', 'urls', 'frontImage', 'backImage',
+    '#Rating', 'rating',
+    '#Links', 'studio', 'tags', 'containing', 'subgroups'],
+  performer: ['#Details', 'name', 'disambiguation', 'aliasList', 'gender', 'birthdate', 'deathDate', 'country', 'height',
+    'details', 'urls', 'image',
+    '#Rating', 'rating', 'favorite',
+    '#Links', 'tags'],
+  studio: ['#Details', 'name', 'aliases', 'details', 'urls', 'image',
+    '#Rating', 'rating', 'favorite',
+    '#Links', 'parent', 'tags'],
+  tag: ['#Details', 'name', 'aliases', 'description', 'image',
+    '#Rating', 'favorite',
+    '#Links', 'parents', 'children'],
 };
+
+/** Gender values (GenderEnum) and how they are shown. */
+const GENDERS = [
+  ['FEMALE', 'Female'], ['MALE', 'Male'], ['TRANSGENDER_FEMALE', 'Transgender female'],
+  ['TRANSGENDER_MALE', 'Transgender male'], ['INTERSEX', 'Intersex'], ['NON_BINARY', 'Non-binary'],
+];
+
+/** Stash dates: "2024", "2024-03" or "2024-03-11". */
+const DATE_RE = /^\d{4}(-\d{2}(-\d{2})?)?$/;
 
 /** Display name of an item for the panel title. */
 function nameOf(kind, item) {
@@ -105,14 +135,120 @@ export function openEditor(kind, item, onSaved, onClose) {
   };
 
   const actions = {
-    title: {
-      label: 'Title',
-      value: () => item.title || '—',
-      run: async () => {
-        const v = await promptText({ title: 'Title', value: item.title || '' });
-        if (v === undefined || v === (item.title || '')) return;
-        await save({ title: v }, 'Title saved');
+    // Details
+    title: textAction('Title', 'title'),
+    name: textAction('Name', 'name', { required: true }),
+    code: textAction('Studio code', 'code'),
+    director: textAction('Director', 'director'),
+    photographer: textAction('Photographer', 'photographer'),
+    disambiguation: textAction('Disambiguation', 'disambiguation'),
+    country: textAction('Country', 'country', { placeholder: 'Two-letter code, e.g. PT' }),
+    details: textAction('Details', 'details', { multiline: true }),
+    synopsis: textAction('Synopsis', 'synopsis', { multiline: true }),
+    description: textAction('Description', 'description', { multiline: true }),
+    date: dateAction('Date', 'date'),
+    birthdate: dateAction('Birth date', 'birthdate'),
+    deathDate: dateAction('Death date', 'death_date'),
+    height: textAction('Height (cm)', 'height_cm', {
+      parse: (v) => (v ? parseInt(v, 10) : null),
+      check: (v) => !v || /^\d{2,3}$/.test(v) || 'Use whole centimetres, e.g. 168.',
+    }),
+    duration: textAction('Length', 'duration', {
+      show: (v) => (v ? formatDuration(v) : ''),
+      parse: (v) => (v ? Math.round(parseDuration(v)) : null),
+      check: (v) => !v || parseDuration(v) !== null || 'Use hours:minutes:seconds, e.g. 1:32:00.',
+      placeholder: 'e.g. 1:32:00',
+    }),
+    // Aliases are a list for performers, studios and tags, and one line of
+    // text for groups.
+    aliasList: listTextAction('Aliases', 'alias_list'),
+    aliases: listTextAction('Aliases', 'aliases'),
+    aliasText: textAction('Aliases', 'aliases'),
+    gender: {
+      label: 'Gender',
+      value: () => {
+        const g = GENDERS.find((x) => x[0] === item.gender);
+        return g ? g[1] : 'None';
       },
+      run: async () => {
+        const v = await chooseOption({
+          title: 'Gender',
+          options: [{ label: 'None', value: '' }].concat(GENDERS.map((g) => ({ label: g[1], value: g[0] }))),
+          selected: item.gender || '',
+        });
+        if (v === undefined || v === (item.gender || '')) return;
+        await save({ gender: v || null }, 'Gender saved');
+      },
+    },
+    urls: {
+      label: 'Links (URLs)',
+      value: () => String((item.urls || []).length),
+      run: async () => {
+        const current = item.urls || [];
+        const choice = await chooseOption({
+          title: 'Links',
+          options: [{ label: 'Add a link…', value: '__add' }].concat(current.map((u, i) => ({ label: u, hint: 'Remove', value: i }))),
+        });
+        if (choice === undefined) return;
+        let next;
+        if (choice === '__add') {
+          const u = await promptText({
+            title: 'Add a link', placeholder: 'https://…', type: 'url', confirm: 'Add',
+          });
+          if (!u || !u.trim()) return;
+          next = current.concat([u.trim()]);
+        } else {
+          next = current.filter((_, i) => i !== choice);
+        }
+        await save({ urls: next }, choice === '__add' ? 'Link added' : 'Link removed');
+      },
+    },
+    image: imageAction('Image', 'image', 'image_path'),
+    frontImage: imageAction('Front cover', 'front_image', 'front_image_path'),
+    backImage: imageAction('Back cover', 'back_image', 'back_image_path'),
+    cover: {
+      label: 'Cover image',
+      value: () => '',
+      run: async () => {
+        const choice = await chooseOption({
+          title: 'Cover image',
+          options: [
+            { label: 'Use a frame from the video…', value: 'frame' },
+            { label: 'Use an image from a URL…', value: 'url' },
+          ],
+        });
+        if (!choice) return;
+        if (choice === 'url') {
+          const u = await promptText({ title: 'Cover image URL', placeholder: 'https://…', type: 'url' });
+          if (!u || !u.trim()) return;
+          await save({ cover_image: u.trim() }, 'Cover saved');
+          return;
+        }
+        const file = item.files && item.files[0];
+        const sec = await askTime('Frame for the cover', 0, file ? file.duration : 0);
+        if (sec === undefined) return;
+        try {
+          await api.sceneScreenshot(item.id, sec);
+        } catch (err) {
+          toast(`Couldn't make the cover: ${err.message}`, 'error');
+          return;
+        }
+        changed = true;
+        toast(`Cover set from ${formatDuration(sec)}`);
+      },
+    },
+    scrape: {
+      label: 'Scrape metadata…',
+      value: () => '',
+      run: () => scrapeScene(item, async (applied) => {
+        if (!applied) return;
+        changed = true;
+        // Reload so the panel shows the scraped values.
+        try {
+          Object.assign(item, await api.getScene(item.id));
+        } catch (e) { /* the page reloads when the panel closes anyway */ }
+        render();
+      }),
     },
     rating: {
       label: 'Rating',
@@ -270,6 +406,93 @@ export function openEditor(kind, item, onSaved, onClose) {
       },
     },
   };
+
+  /**
+   * Action for a line of text (or, with `multiline`, a longer text).
+   * @param {string} label
+   * @param {string} field  item field, also the update input field
+   * @param {Object} [opts]
+   * @param {boolean} [opts.multiline]  text box for long text
+   * @param {boolean} [opts.required]   can't be emptied (names)
+   * @param {string} [opts.placeholder]
+   * @param {(v: *) => string} [opts.show]    stored value → text
+   * @param {(t: string) => *} [opts.parse]   text → stored value
+   * @param {(t: string) => true|string} [opts.check]  true, or an error message
+   */
+  function textAction(label, field, opts) {
+    const o = opts || {};
+    const show = o.show || ((v) => (v === null || v === undefined ? '' : String(v)));
+    return {
+      label,
+      value: () => {
+        const t = show(item[field]);
+        return t ? (t.length > 40 ? `${t.slice(0, 40)}…` : t) : '—';
+      },
+      run: async () => {
+        const before = show(item[field]);
+        const t = await promptText({
+          title: label, value: before, multiline: o.multiline, placeholder: o.placeholder || '',
+        });
+        if (t === undefined || t.trim() === before.trim()) return;
+        const text = o.multiline ? t.replace(/\s+$/, '') : t.trim();
+        if (o.required && !text) {
+          toast(`${label} can't be empty.`, 'error');
+          return;
+        }
+        const ok = o.check ? o.check(text) : true;
+        if (ok !== true) {
+          toast(ok, 'error');
+          return;
+        }
+        await save({ [field]: o.parse ? o.parse(text) : text }, `${label} saved`);
+      },
+    };
+  }
+
+  /** A date field ("2024", "2024-03" or "2024-03-11"; empty clears it). */
+  function dateAction(label, field) {
+    return textAction(label, field, {
+      placeholder: 'YYYY-MM-DD',
+      show: (v) => v || '',
+      parse: (t) => t || null,
+      check: (t) => !t || DATE_RE.test(t) || 'Use year-month-day, e.g. 2024-03-11.',
+    });
+  }
+
+  /** A list of names (aliases) edited as one comma-separated line. */
+  function listTextAction(label, field) {
+    return textAction(label, field, {
+      placeholder: 'Separate with commas',
+      show: (v) => (v || []).join(', '),
+      parse: (t) => t.split(',').map((x) => x.trim()).filter(Boolean),
+    });
+  }
+
+  /**
+   * Sets an image (performer/studio/tag image, group covers) from a URL;
+   * Stash downloads it.
+   * @param {string} label
+   * @param {string} inputField  e.g. 'image', 'front_image'
+   * @param {string} pathField   item field with the current image's path
+   */
+  function imageAction(label, inputField, pathField) {
+    return {
+      label,
+      value: () => (item[pathField] && !/default=true/.test(item[pathField]) ? 'Set' : 'None'),
+      run: async () => {
+        const u = await promptText({
+          title: `${label} from a URL`, placeholder: 'https://… (Stash downloads it)', type: 'url', confirm: 'Use image',
+        });
+        if (!u || !u.trim()) return;
+        if (await save({ [inputField]: u.trim() }, `${label} saved`)) {
+          delete item[inputField];
+          // The page reloads its image after the panel closes (new t= value).
+          item[pathField] = `${(item[pathField] || '').split('?')[0]}?t=${Date.now()}`;
+          render();
+        }
+      },
+    };
+  }
 
   /**
    * Choose/remove action for a single studio field: a scene's (or gallery's,
@@ -430,6 +653,10 @@ export function openEditor(kind, item, onSaved, onClose) {
     lines.innerHTML = '';
     let toFocus = null;
     for (const key of FIELDS[kind]) {
+      if (key.charAt(0) === '#') {
+        lines.appendChild(h('div', { class: 'menu-heading' }, key.slice(1)));
+        continue;
+      }
       const a = actions[key];
       const el = h('div', {
         class: 'menu-item focusable',
@@ -448,7 +675,7 @@ export function openEditor(kind, item, onSaved, onClose) {
   }
 
   render();
-  focus(lines.firstChild);
+  focus(lines.querySelector('.focusable'));
   return close;
 }
 

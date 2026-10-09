@@ -1556,3 +1556,25 @@ body.no-sidebar .content {
 
 /* Scene markers (0.4) */
 .grid-marker .card { width: calc(25% - 1.5rem); }
+
+/* Text box for long text (descriptions) in the text prompt. */
+.field-textarea {
+  height: auto;
+  min-height: 12rem;
+  padding-top: 0.8rem;
+  line-height: 1.4;
+  resize: none;
+}
+
+/* Section heading inside a menu or edit panel (Details, Links…). */
+.menu-heading {
+  margin: 1.2rem 1.25rem 0.4rem;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.menu-heading:first-child {
+  margin-top: 0;
+}

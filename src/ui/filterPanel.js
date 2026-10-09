@@ -13,7 +13,7 @@
  * Criteria this panel doesn't know (made in the web UI) are kept and counted
  * under "Other criteria", where they can be removed.
  */
-import { chooseOption } from './overlay.js';
+import { chooseOption, promptText } from './overlay.js';
 import { formatDate } from '../util/format.js';
 import {
   editList, openLinesPanel, pickPerformer, pickStudio, pickTag,
@@ -21,13 +21,15 @@ import {
 
 /** Criteria offered per browse section, in display order. */
 export const SECTION_CRITERIA = {
-  scenes: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution', 'duration', 'date', 'o_counter'],
-  groups: ['rating100', 'tags', 'performers', 'studios', 'date'],
+  scenes: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution', 'duration', 'date', 'o_counter',
+    'performer_count', 'has_markers', 'path'],
+  groups: ['rating100', 'tags', 'performers', 'studios', 'date', 'scene_count'],
   markers: ['tags', 'scene_tags', 'performers'],
-  galleries: ['rating100', 'tags', 'performers', 'studios', 'organized', 'date'],
-  images: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution', 'o_counter'],
-  performers: ['rating100', 'gender', 'tags', 'studios'],
-  studios: ['rating100', 'tags'],
+  galleries: ['rating100', 'tags', 'performers', 'studios', 'organized', 'date', 'image_count', 'path'],
+  images: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution', 'o_counter', 'path'],
+  performers: ['rating100', 'gender', 'age', 'country', 'tags', 'studios', 'scene_count'],
+  studios: ['rating100', 'tags', 'scene_count'],
+  tags: ['scene_count'],
 };
 
 /** Gender choices, as the web UI names them. */
@@ -140,9 +142,12 @@ export function criteriaCount(criteria) {
  * @param {string} opts.section             browse section (see SECTION_CRITERIA)
  * @param {Object} opts.criteria            current criteria (UI format); not modified
  * @param {(criteria: Object) => void} opts.onChange  called with a new object after each change
+ * @param {string} [opts.query]                 current text search
+ * @param {(q: string) => void} [opts.onQuery]  called when the text search changes
  */
 export function openFilterPanel(opts) {
   let criteria = Object.assign({}, opts.criteria || {});
+  let query = opts.query || '';
   const keys = SECTION_CRITERIA[opts.section] || [];
   let panel = null;
 
@@ -240,7 +245,46 @@ export function openFilterPanel(opts) {
     };
   };
 
+  /** Counts as presets: [label, modifier, value, value2?]. */
+  const countPresets = (rows) => rows.map(([label, modifier, value, value2]) => ({
+    label, c: { modifier, value: value2 === undefined ? { value } : { value, value2 } },
+  }));
+
+  /** A "contains text" criterion (file path, country…). */
+  const textLine = (key, label, placeholder) => {
+    const c = criteria[key];
+    const cur = c ? String(c.value || '') : '';
+    return {
+      key,
+      label,
+      value: c ? (c.modifier === 'INCLUDES' ? `contains “${cur}”` : cur || 'Set in Stash') : 'Any',
+      run: async () => {
+        const t = await promptText({ title: label, value: c && c.modifier === 'INCLUDES' ? cur : '', placeholder, confirm: 'Filter' });
+        if (t === undefined) return;
+        set(key, t.trim() ? { modifier: 'INCLUDES', value: t.trim() } : null);
+      },
+    };
+  };
+
   const builders = {
+    performer_count: () => presetLine('performer_count', 'Performers in scene', countPresets([
+      ['None', 'EQUALS', 0], ['One', 'EQUALS', 1], ['Two', 'EQUALS', 2], ['Three or more', 'GREATER_THAN', 2],
+    ])),
+    has_markers: () => presetLine('has_markers', 'Has markers', [
+      { label: 'Yes', c: { modifier: 'EQUALS', value: 'true' } },
+      { label: 'No', c: { modifier: 'EQUALS', value: 'false' } },
+    ]),
+    path: () => textLine('path', 'File path', 'Part of the folder or file name'),
+    country: () => textLine('country', 'Country', 'Two-letter code, e.g. PT'),
+    age: () => presetLine('age', 'Age', countPresets([
+      ['Under 25', 'LESS_THAN', 25], ['25 to 34', 'BETWEEN', 25, 34], ['35 to 44', 'BETWEEN', 35, 44], ['45 or older', 'GREATER_THAN', 44],
+    ])),
+    scene_count: () => presetLine('scene_count', 'Scenes', countPresets([
+      ['None', 'EQUALS', 0], ['At least one', 'GREATER_THAN', 0], ['10 or more', 'GREATER_THAN', 9], ['50 or more', 'GREATER_THAN', 49],
+    ])),
+    image_count: () => presetLine('image_count', 'Images', countPresets([
+      ['Under 20', 'LESS_THAN', 20], ['20 to 100', 'BETWEEN', 20, 100], ['Over 100', 'GREATER_THAN', 100],
+    ])),
     duration: () => presetLine('duration', 'Length', [
       { label: 'Under 5 minutes', c: { modifier: 'LESS_THAN', value: { value: 300 } } },
       { label: '5 to 20 minutes', c: { modifier: 'BETWEEN', value: { value: 300, value2: 1200 } } },
@@ -315,7 +359,24 @@ export function openFilterPanel(opts) {
   };
 
   const lines = () => {
-    const out = keys.map((k) => builders[k]());
+    const out = [];
+    if (opts.onQuery) {
+      out.push({
+        key: 'q',
+        label: 'Text search',
+        value: query ? `“${query}”` : 'None',
+        run: async () => {
+          const t = await promptText({
+            title: 'Text search', value: query, placeholder: 'Title, file name, details…', confirm: 'Search',
+          });
+          if (t === undefined || t.trim() === query) return;
+          query = t.trim();
+          opts.onQuery(query);
+          panel.render();
+        },
+      });
+    }
+    for (const k of keys) out.push(builders[k]());
     const others = Object.keys(criteria).filter((k) => keys.indexOf(k) < 0 && TOGGLE_KEYS.indexOf(k) < 0);
     if (others.length) {
       out.push({
@@ -340,10 +401,10 @@ export function openFilterPanel(opts) {
         },
       });
     }
-    if (criteriaCount(criteria)) {
+    if (criteriaCount(criteria) || query) {
       out.push({
         key: 'clear',
-        label: 'Clear all criteria',
+        label: 'Clear all',
         danger: true,
         run: () => {
           // Toolbar toggles are kept; they have their own buttons.
@@ -351,6 +412,10 @@ export function openFilterPanel(opts) {
           for (const k of TOGGLE_KEYS) if (criteria[k]) kept[k] = criteria[k];
           criteria = kept;
           opts.onChange(criteria);
+          if (query && opts.onQuery) {
+            query = '';
+            opts.onQuery('');
+          }
           panel.render();
         },
       });

@@ -1,5 +1,6 @@
 /**
- * Settings: server, image cache (with live usage), playback and about.
+ * Settings: image cache (with live usage), playback, server, library,
+ * library tasks (with editing on) and about.
  */
 import { Screen } from '../ui/router.js';
 import { h } from '../util/dom.js';
@@ -12,6 +13,10 @@ import {
 } from '../cache/imageCache.js';
 import { formatBytes } from '../util/format.js';
 import { getServerInfo } from '../session.js';
+import { canEdit } from '../ui/editor.js';
+import {
+  TASKS, jobQueue, startTask, stopAllJobs,
+} from '../api/tasks.js';
 
 /* global __APP_VERSION__ */
 
@@ -27,6 +32,83 @@ export class SettingsScreen extends Screen {
 
   onShow() {
     this.refreshUsage();
+    this.pollJobs();
+  }
+
+  onHide() {
+    clearTimeout(this.jobTimer);
+    this.jobTimer = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Library tasks
+  // -------------------------------------------------------------------------
+
+  /** Lines for Stash's library tasks (shown when editing is on). */
+  taskLines() {
+    if (!canEdit()) return [];
+    this.jobsEl = h('span', { class: 'setting-value' }, '…');
+    this.stopLine = this.line('Stop running tasks', () => '', async () => {
+      try {
+        await stopAllJobs();
+        toast('Stopping tasks');
+      } catch (err) {
+        toast(`Couldn't stop: ${err.message}`, 'error');
+      }
+      this.pollJobs();
+    });
+    this.stopLine.style.display = 'none';
+    const lines = [
+      h('h2', { class: 'settings-heading' }, 'Library tasks'),
+      h('div', { class: 'setting' }, [
+        h('div', { class: 'setting-text' }, [h('span', { class: 'setting-label' }, 'Status')]),
+        this.jobsEl,
+      ]),
+    ];
+    for (const key of Object.keys(TASKS)) {
+      const t = TASKS[key];
+      lines.push(this.line(t.label, () => '', async () => {
+        const ok = await confirmDialog({
+          title: `${t.label}?`,
+          message: `${t.note} Stash runs it in the background with the options saved in its Tasks page.`,
+          confirm: 'Start',
+          safe: !!t.danger,
+        });
+        if (!ok) return;
+        try {
+          await startTask(key);
+          toast(`${t.label} started`);
+        } catch (err) {
+          toast(`Couldn't start: ${err.message}`, 'error');
+        }
+        this.pollJobs();
+      }, t.note));
+    }
+    lines.push(this.stopLine);
+    return lines;
+  }
+
+  /** Shows the job queue, refreshing every few seconds while tasks run. */
+  async pollJobs() {
+    clearTimeout(this.jobTimer);
+    if (!this.jobsEl) return;
+    let jobs = [];
+    try {
+      jobs = await jobQueue();
+    } catch (err) {
+      this.jobsEl.textContent = "Couldn't read the task queue";
+      return;
+    }
+    const running = jobs.filter((j) => j.status === 'RUNNING' || j.status === 'READY' || j.status === 'STOPPING');
+    if (!running.length) {
+      this.jobsEl.textContent = 'Idle';
+    } else {
+      const j = running[0];
+      const pct = j.progress !== null && j.progress !== undefined && j.progress >= 0 ? ` ${Math.round(j.progress * 100)}%` : '';
+      this.jobsEl.textContent = `${j.description}${pct}${running.length > 1 ? ` (+${running.length - 1} queued)` : ''}`;
+    }
+    this.stopLine.style.display = running.length ? '' : 'none';
+    if (running.length && this.isTop()) this.jobTimer = setTimeout(() => this.pollJobs(), 2000);
   }
 
   /** One settings line. `value` is a function so lines can refresh. */
@@ -77,7 +159,7 @@ export class SettingsScreen extends Screen {
 
     this.el.appendChild(h('h1', { class: 'page-title' }, 'Settings'));
     this.el.appendChild(h('div', { class: 'settings-columns' }, [
-      h('div', { class: 'settings-col nav-group' }, [
+      h('div', { class: 'settings-col nav-group nav-zone' }, [
         h('h2', { class: 'settings-heading' }, 'Image cache'),
         h('div', { class: 'usage' }, [h('div', { class: 'usage-track' }, this.usageBar), this.usageEl]),
         this.choice('Storage limit', 'cacheBudgetMB', budgetOptions,
@@ -119,7 +201,7 @@ export class SettingsScreen extends Screen {
           [{ value: true, label: 'On' }, { value: false, label: 'Off' }],
           'Resume position and play count.'),
       ]),
-      h('div', { class: 'settings-col nav-group' }, [
+      h('div', { class: 'settings-col nav-group nav-zone' }, [
         h('h2', { class: 'settings-heading' }, 'Server'),
         h('div', { class: 'server-card' }, [
           h('div', { class: 'server-url' }, s.serverUrl),
@@ -146,9 +228,10 @@ export class SettingsScreen extends Screen {
         this.choice('Editing', 'allowEditing',
           [{ value: true, label: 'On' }, { value: false, label: 'Off (view only)' }],
           'Ratings, favourites, tags and other links, markers and saved filters.'),
+      ].concat(this.taskLines(), [
         h('h2', { class: 'settings-heading' }, 'About'),
         h('p', { class: 'about-text' }, `Stash for webOS ${__APP_VERSION__}. An unofficial client for Stash.`),
-      ]),
+      ])),
     ]));
     this.refreshUsage();
   }

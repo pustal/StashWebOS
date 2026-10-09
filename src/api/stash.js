@@ -129,7 +129,7 @@ export async function findScenes(opts) {
 export async function getScene(id) {
   const data = await q(`query ($id: ID!) {
     findScene(id: $id) {
-      id title code details director date rating100 o_counter play_count resume_time organized
+      id title code details director date urls rating100 o_counter play_count resume_time organized
       files { id basename path size duration video_codec audio_codec format width height frame_rate bit_rate }
       paths { screenshot preview stream vtt sprite caption }
       sceneStreams { url mime_type label }
@@ -217,7 +217,7 @@ export async function getPerformer(id) {
     findPerformer(id: $id) {
       id name disambiguation gender birthdate death_date country ethnicity height_cm
       measurements hair_color eye_color alias_list details favorite image_path rating100
-      career_start career_end
+      career_start career_end urls
       scene_count gallery_count image_count group_count
       tags { id name }
     }
@@ -229,7 +229,7 @@ export async function getPerformer(id) {
 export async function getStudio(id) {
   const data = await q(`query ($id: ID!) {
     findStudio(id: $id) {
-      id name details image_path favorite rating100
+      id name details image_path favorite rating100 aliases urls
       scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
       parent_studio { id name }
       child_studios { id }
@@ -251,6 +251,14 @@ export async function getTag(id) {
     }
   }`, { id });
   return data.findTag;
+}
+
+/**
+ * Makes a scene's cover from the video frame at `at` seconds (Stash
+ * generates the screenshot and stores it as the cover).
+ */
+export function sceneScreenshot(id, at) {
+  return q('mutation ($id: ID!, $at: Float) { sceneGenerateScreenshot(id: $id, at: $at) }', { id, at });
 }
 
 /** Create mutation per kind, for {@link createNamed}. */
@@ -324,7 +332,7 @@ export async function getGallery(id) {
   const data = await q(`${SCENE_CARD}
     query ($id: ID!) {
       findGallery(id: $id) {
-        id title date details photographer rating100 organized image_count
+        id title code date details photographer urls rating100 organized image_count
         paths { cover }
         files { basename }
         folder { path }
@@ -348,7 +356,7 @@ export async function getGallery(id) {
  */
 const IMAGE_CARD = `
 fragment ImageCard on Image {
-  id title date rating100 o_counter organized
+  id title code date details photographer urls rating100 o_counter organized
   paths { thumbnail image }
   studio { id name }
   performers { id name }
@@ -430,7 +438,7 @@ export async function getGroup(id) {
   const data = await q(`${GROUP_CARD}
     query ($id: ID!) {
       findGroup(id: $id) {
-        id name aliases date duration director synopsis rating100
+        id name aliases date duration director synopsis urls rating100
         front_image_path back_image_path
         scene_count
         studio { id name }

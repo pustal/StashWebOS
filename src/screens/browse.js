@@ -142,6 +142,8 @@ export class BrowseScreen extends Screen {
     this.activeToggles = {};
     /** Filter criteria in Stash's saved-filter format (see filterPanel.js). */
     this.criteria = {};
+    /** Text search (Filter panel), saved as a saved filter's `q`. */
+    this.query = '';
     /** True when the view differs from the saved filter in use. */
     this.dirty = false;
 
@@ -242,7 +244,7 @@ export class BrowseScreen extends Screen {
       perPage,
       sort: useSavedSort ? this.saved.query.sort : api.sortKey(this.sort.key, this.seed),
       direction: useSavedSort ? this.saved.query.direction : this.sort.direction,
-      q: this.saved ? this.saved.query.q : undefined,
+      q: this.query || undefined,
       filter,
     });
   }
@@ -294,6 +296,7 @@ export class BrowseScreen extends Screen {
     } : null;
     this.sortChosen = false;
     this.criteria = f ? JSON.parse(JSON.stringify(f.object_filter || {})) : {};
+    this.query = (f && resolved.query.q) || '';
     this.activeToggles = {};
     this.config.toggles.forEach((t, i) => {
       const keys = Object.keys(t.uiFilter || {});
@@ -321,7 +324,7 @@ export class BrowseScreen extends Screen {
     this.savedLabel.textContent = f ? (this.dirty ? `${f.name} (changed)` : f.name) : 'Saved filters';
     this.savedButton.classList.toggle('on', !!f);
     if (this.filterButton) {
-      const n = criteriaCount(this.criteria);
+      const n = criteriaCount(this.criteria) + (this.query ? 1 : 0);
       this.filterLabel.textContent = n ? `Filter (${n})` : 'Filter';
       this.filterButton.classList.toggle('on', n > 0);
     }
@@ -334,6 +337,12 @@ export class BrowseScreen extends Screen {
       criteria: this.criteria,
       onChange: (criteria) => {
         this.criteria = criteria;
+        this.markDirty();
+        this.reload();
+      },
+      query: this.query,
+      onQuery: (q) => {
+        this.query = q;
         this.markDirty();
         this.reload();
       },
@@ -355,7 +364,7 @@ export class BrowseScreen extends Screen {
       direction: useSaved ? this.saved.query.direction : this.sort.direction,
       per_page: 40,
     };
-    if (this.saved && this.saved.query.q) findFilter.q = this.saved.query.q;
+    if (this.query) findFilter.q = this.query;
     return { findFilter, objectFilter };
   }
 

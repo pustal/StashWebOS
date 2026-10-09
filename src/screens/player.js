@@ -8,6 +8,7 @@
  * - Up/Down: show the controls
  * - Play, Pause, Stop, Rewind, Fast-forward: as labelled
  * - Channel up/down: next/previous marker
+ * - Set cover (with editing on): the frame on screen becomes the scene's cover
  * - Markers button: jump to a marker, or (with editing on) add a marker at
  *   the current time and edit or delete markers (see ui/markerEditor.js)
  * - Back: hide the controls, or leave the player (progress is saved)
@@ -24,7 +25,7 @@
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
 import { focus, getFocused } from '../nav/focus.js';
-import { chooseOption, toast } from '../ui/overlay.js';
+import { chooseOption, confirmDialog, toast } from '../ui/overlay.js';
 import { KEY, isBack } from '../util/keys.js';
 import { formatDuration, sceneTitle } from '../util/format.js';
 import { getSettings } from '../settings.js';
@@ -116,6 +117,7 @@ export class PlayerScreen extends Screen {
       this.markersButton = this.ctrl('markers', 'Markers', () => this.pickMarker()),
       this.captionsButton = this.ctrl('captions', 'Subtitles', () => this.pickSubtitles()),
       this.ctrl('stream', 'Source', () => this.pickSource()),
+      canEdit() ? this.ctrl('image', 'Set cover', () => this.setCover()) : null,
       this.nextScene() ? this.ctrl('next', 'Next', () => this.playNext()) : null,
     ]);
     this.title = h('div', { class: 'player-title' }, sceneTitle(this.scene));
@@ -400,6 +402,23 @@ export class PlayerScreen extends Screen {
     }
     const m = this.markers.find((x) => x.id === value);
     if (m) this.seekTo(m.seconds);
+  }
+
+  /** Makes the frame on screen the scene's cover (after confirming). */
+  async setCover() {
+    const at = this.position();
+    const ok = await confirmDialog({
+      title: 'Set as cover?',
+      message: `The frame at ${formatDuration(at)} becomes this scene's cover image in Stash.`,
+      confirm: 'Set cover',
+    });
+    if (!ok) return;
+    try {
+      await api.sceneScreenshot(this.scene.id, at);
+      toast('Cover saved');
+    } catch (err) {
+      toast(`Couldn't set the cover: ${err.message}`, 'error');
+    }
   }
 
   /** Jumps to the next (+1) or previous (-1) marker. */

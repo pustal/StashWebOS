@@ -116,16 +116,26 @@ export function confirmDialog(opts) {
 /**
  * Asks for a line of text. The TV keyboard opens straight away; OK saves,
  * Back cancels.
- * @param {{title: string, value?: string, placeholder?: string, confirm?: string}} opts
+ * @param {{title: string, value?: string, placeholder?: string, confirm?: string,
+ *   multiline?: boolean, type?: string}} opts  multiline: a text box for long
+ *   text; type: input type, e.g. 'url'
  * @returns {Promise<string|undefined>} the text, or undefined when cancelled
  */
 export function promptText(opts) {
   return new Promise((resolve) => {
     let close = null;
-    const input = h('input', {
-      class: 'field-input focusable', type: 'text', value: opts.value || '', placeholder: opts.placeholder || '',
-      autocomplete: 'off', spellcheck: 'false', 'data-autofocus': true,
-    });
+    // Long text (descriptions) gets a taller box; line breaks already in the
+    // text are kept, OK still saves.
+    const input = opts.multiline
+      ? h('textarea', {
+        class: 'field-input field-textarea focusable', rows: 6, placeholder: opts.placeholder || '',
+        spellcheck: 'false', 'data-autofocus': true,
+      })
+      : h('input', {
+        class: 'field-input focusable', type: opts.type || 'text', value: opts.value || '', placeholder: opts.placeholder || '',
+        autocomplete: 'off', spellcheck: 'false', 'data-autofocus': true,
+      });
+    if (opts.multiline) input.value = opts.value || '';
     const done = (v) => {
       close();
       resolve(v);
@@ -135,8 +145,8 @@ export function promptText(opts) {
         e.preventDefault();
         e.stopPropagation();
         done(input.value);
-      } else if (e.keyCode === 40) {
-        // Down leaves the field for the buttons.
+      } else if (e.keyCode === 40 && (!opts.multiline || input.selectionStart >= input.value.length)) {
+        // Down leaves the field for the buttons (in a text box, from the end).
         e.preventDefault();
         e.stopPropagation();
         input.blur();
