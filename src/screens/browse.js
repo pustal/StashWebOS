@@ -239,14 +239,20 @@ export class BrowseScreen extends Screen {
     return promise;
   }
 
-  /** Builds the query for one page from the criteria, saved filter, sort and toggles. */
-  async fetch(page, perPage) {
+  /** The API filter for the current view: base filter, criteria and toggles. */
+  async currentFilter() {
     let filter = this.config.baseFilter ? this.config.baseFilter() : null;
     const criteria = await this.apiCriteria();
     if (Object.keys(criteria).length) filter = Object.assign({}, filter || {}, criteria);
     for (const t of this.config.toggles) {
       if (this.activeToggles[t.id]) filter = Object.assign({}, filter || {}, t.filter);
     }
+    return filter;
+  }
+
+  /** Builds the query for one page from the criteria, saved filter, sort and toggles. */
+  async fetch(page, perPage) {
+    const filter = await this.currentFilter();
     // A saved filter brings its own sort until the user picks another one.
     const useSavedSort = this.saved && this.saved.query.sort && !this.sortChosen;
     return this.config.find({
@@ -515,13 +521,25 @@ export class BrowseScreen extends Screen {
     const items = this.grid.selectedItems();
     const choice = await chooseOption({
       title: 'Selection',
-      options: (items.length ? [{ label: `Change or delete ${items.length} selected…`, value: 'act' }] : []).concat([
+      options: (items.length ? [{ label: `Change or delete ${items.length} selected…`, value: 'act' }] : []).concat(
+        // Every result, including pages not loaded yet (ids only).
+        this.total > this.grid.loaded ? [{ label: `Select all ${this.total.toLocaleString()} results`, value: 'everything' }] : [],
+      ).concat([
         { label: `Select all ${this.grid.loaded} loaded`, value: 'all' },
         { label: 'Select none', value: 'none' },
         { label: 'Stop selecting', value: 'stop' },
       ]),
     });
     if (choice === 'all') this.grid.selectAll(false);
+    if (choice === 'everything') {
+      try {
+        toast('Selecting…');
+        const ids = await api.findIds(this.config.kind, { q: this.query || undefined, filter: await this.currentFilter() });
+        this.grid.selectIds(ids);
+      } catch (err) {
+        toast(`Couldn't select them: ${err.message}`, 'error');
+      }
+    }
     if (choice === 'none') this.grid.selectAll(true);
     if (choice === 'stop') this.setSelecting(false);
     if (choice !== 'act') return;

@@ -1,6 +1,6 @@
 {
   "id": "org.stashwebos.app",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "vendor": "Stash for webOS",
   "type": "web",
   "main": "index.html",

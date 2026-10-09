@@ -17,10 +17,15 @@ import { getClient } from './stash.js';
 /** typeName → Promise<{field: {kind, name}}> for output and input types. */
 const typeCache = {};
 
+/** NON_NULL/LIST wrappers → {kind, name, list} of the named type. */
 function unwrap(t) {
   let cur = t;
-  while (cur && (cur.kind === 'NON_NULL' || cur.kind === 'LIST')) cur = cur.ofType;
-  return { kind: cur && cur.kind, name: cur && cur.name };
+  let list = false;
+  while (cur && (cur.kind === 'NON_NULL' || cur.kind === 'LIST')) {
+    if (cur.kind === 'LIST') list = true;
+    cur = cur.ofType;
+  }
+  return { kind: cur && cur.kind, name: cur && cur.name, list };
 }
 
 /** Fields of a type (output fields, or input fields for input types). */
@@ -313,4 +318,121 @@ export function runPluginTask(pluginId, taskName) {
 /** Re-reads the plugin files. */
 export function reloadPlugins() {
   return getClient().query('mutation { reloadPlugins }');
+}
+
+// ---------------------------------------------------------------------------
+// Any settings section, by schema (configuration.general/interface/dlna/scraping)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fields of a type: {name: {kind, name, list}}. Works for output and input
+ * types (used by the generic settings panels).
+ */
+export function schemaFields(typeName) {
+  return typeFields(typeName);
+}
+
+/** Values of an enum type, e.g. ['MD5', 'OSHASH']. */
+const enumCache = {};
+export function enumValues(name) {
+  if (!enumCache[name]) {
+    enumCache[name] = getClient().query('query ($n: String!) { __type(name: $n) { enumValues { name } } }', { n: name })
+      .then((d) => ((d.__type && d.__type.enumValues) || []).map((v) => v.name));
+  }
+  return enumCache[name];
+}
+
+/**
+ * Reads some fields of a settings section.
+ * @param {'general'|'interface'|'dlna'|'scraping'} section
+ * @param {string[]} fields  scalar fields only
+ */
+export async function readConfig(section, fields) {
+  const data = await getClient().query(`{ configuration { ${section} { ${fields.join(' ')} } } }`);
+  return data.configuration[section] || {};
+}
+
+/** Mutation and input type per settings section. */
+const CONFIGURE = {
+  general: ['configureGeneral', 'ConfigGeneralInput'],
+  interface: ['configureInterface', 'ConfigInterfaceInput'],
+  dlna: ['configureDLNA', 'ConfigDLNAInput'],
+  scraping: ['configureScraping', 'ConfigScrapingInput'],
+};
+
+/** The input type of a settings section (its editable fields). */
+export function configInputType(section) {
+  return CONFIGURE[section][1];
+}
+
+/** Saves fields of a settings section. */
+export function saveConfig(section, patch) {
+  const [m, t] = CONFIGURE[section];
+  return getClient().query(`mutation ($i: ${t}!) { ${m}(input: $i) { __typename } }`, { i: patch });
+}
+
+// ---------------------------------------------------------------------------
+// Security, logs, database, DLNA, plugin settings
+// ---------------------------------------------------------------------------
+
+/** Whether Stash has a username/password, and its API key. */
+export async function securityInfo() {
+  const data = await getClient().query('{ configuration { general { username apiKey maxSessionAge } } }');
+  return data.configuration.general;
+}
+
+/** Sets (or, with empty strings, removes) Stash's username and password. */
+export function setCredentials(username, password) {
+  return saveConfig('general', { username, password });
+}
+
+/** Makes a new API key (the old one stops working) and returns it. */
+export async function newApiKey() {
+  const data = await getClient().query('mutation { generateAPIKey(input: { clear: false }) }');
+  return data.generateAPIKey;
+}
+
+/** Recent log lines, newest first (as Stash returns them). */
+export async function logs() {
+  const data = await getClient().query('{ logs { time level message } }');
+  const list = (data.logs || []).slice();
+  // Order by time, newest first, whatever order the server used.
+  list.sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0));
+  return list;
+}
+
+/** Backs up the database into Stash's backup folder; returns its message. */
+export async function backupDatabase() {
+  const data = await getClient().query('mutation { backupDatabase(input: { download: false }) }');
+  return data.backupDatabase;
+}
+
+/** Optimises the database (a background job). */
+export function optimiseDatabase() {
+  return getClient().query('mutation { optimiseDatabase }');
+}
+
+/** Whether the DLNA server runs now. */
+export async function dlnaStatus() {
+  const data = await getClient().query('{ dlnaStatus { running until } }');
+  return data.dlnaStatus;
+}
+
+/** Starts or stops the DLNA server until it is changed again (or Stash restarts). */
+export function setDlnaRunning(on) {
+  return on
+    ? getClient().query('mutation { enableDLNA(input: {}) }')
+    : getClient().query('mutation { disableDLNA(input: {}) }');
+}
+
+/** A plugin's settings (definitions) and their saved values. */
+export async function pluginSettings(id) {
+  const data = await getClient().query('{ plugins { id settings { name display_name description type } } configuration { plugins } }');
+  const p = (data.plugins || []).find((x) => x.id === id);
+  return { settings: (p && p.settings) || [], values: (data.configuration.plugins || {})[id] || {} };
+}
+
+/** Saves a plugin's settings (the whole map). */
+export function savePluginSettings(id, values) {
+  return getClient().query('mutation ($p: ID!, $i: Map!) { configurePlugin(plugin_id: $p, input: $i) }', { p: id, i: values });
 }

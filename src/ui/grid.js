@@ -95,6 +95,21 @@ export class Grid {
     if (this.onSelectionChange) this.onSelectionChange(this.selection.size);
   }
 
+  /**
+   * Selects items by id, including ones not loaded yet (they are kept as
+   * {id} until their card loads; actions only need the ids).
+   */
+  selectIds(ids) {
+    if (!this.selection) return;
+    this.selection.clear();
+    const loaded = new Map(this.items.map((it) => [it.id, it]));
+    for (const id of ids) this.selection.set(id, loaded.get(id) || { id });
+    for (const card of this.el.children) {
+      if (card.__item) card.classList.toggle('selected', this.selection.has(card.__item.id));
+    }
+    if (this.onSelectionChange) this.onSelectionChange(this.selection.size);
+  }
+
   /** The selected items, in grid order. */
   selectedItems() {
     return this.selection ? Array.from(this.selection.values()) : [];

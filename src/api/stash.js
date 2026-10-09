@@ -649,6 +649,33 @@ export function bulkUpdate(kind, ids, patch) {
   return q(`mutation ($i: ${type}!) { ${mutation}(input: $i) { id } }`, { i: Object.assign({ ids }, patch) });
 }
 
+/** Per kind: find query, list field, filter argument and filter type. */
+const FINDS = {
+  scene: ['findScenes', 'scenes', 'scene_filter', 'SceneFilterType'],
+  image: ['findImages', 'images', 'image_filter', 'ImageFilterType'],
+  gallery: ['findGalleries', 'galleries', 'gallery_filter', 'GalleryFilterType'],
+  group: ['findGroups', 'groups', 'group_filter', 'GroupFilterType'],
+  performer: ['findPerformers', 'performers', 'performer_filter', 'PerformerFilterType'],
+  studio: ['findStudios', 'studios', 'studio_filter', 'StudioFilterType'],
+  tag: ['findTags', 'tags', 'tag_filter', 'TagFilterType'],
+  marker: ['findSceneMarkers', 'scene_markers', 'scene_marker_filter', 'SceneMarkerFilterType'],
+};
+
+/**
+ * The ids of every result of a query (all pages), for "select all".
+ * Only ids are fetched, so this stays light even for large libraries.
+ * @param {string} kind
+ * @param {{q?: string, filter?: Object}} opts
+ * @returns {Promise<string[]>}
+ */
+export async function findIds(kind, opts) {
+  const [field, list, arg, type] = FINDS[kind];
+  const data = await q(`query ($filter: FindFilterType, $f: ${type}) {
+    ${field}(filter: $filter, ${arg}: $f) { ${list} { id } }
+  }`, { filter: { per_page: -1, q: (opts && opts.q) || undefined }, f: (opts && opts.filter) || null });
+  return data[field][list].map((x) => x.id);
+}
+
 /**
  * Deletes several items.
  * @param {string} kind
