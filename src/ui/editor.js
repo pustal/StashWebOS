@@ -11,7 +11,9 @@
  *   scene's number), markers (see markerEditor.js)
  * - hierarchies: parent tags/sub-tags, parent studio, containing groups and
  *   sub-groups
- * - scenes can also be scraped (see scraper.js)
+ * - scenes, images, galleries, groups and performers can be scraped (see
+ *   scraper.js), and every kind can be deleted (scenes, images and galleries
+ *   optionally with their files)
  *
  * Tags, performers and studios that don't exist yet can be created from the
  * pickers (name only).
@@ -22,7 +24,7 @@
  */
 import { h, icon } from '../util/dom.js';
 import {
-  chooseOption, openModal, pickBySearch, promptText, toast,
+  chooseOption, confirmDialog, openModal, pickBySearch, promptText, toast,
 } from './overlay.js';
 import { focus, getFocused } from '../nav/focus.js';
 import { pickPerformer, pickStudio, pickTag } from './panel.js';
@@ -31,7 +33,8 @@ import * as api from '../api/stash.js';
 import {
   countOf, formatDate, formatDuration, galleryTitle, imageTitle, parseDuration, sceneTitle, stars,
 } from '../util/format.js';
-import { scrapeScene } from './scraper.js';
+import { scrapeItem } from './scraper.js';
+import { goBack } from './navigate.js';
 import {
   addMarker, askTime, editMarker, markerName, markerTime,
 } from './markerEditor.js';
@@ -55,26 +58,32 @@ const FIELDS = {
   scene: ['#Details', 'title', 'code', 'date', 'director', 'details', 'urls',
     '#Rating', 'rating', 'o', 'organized',
     '#Links', 'studio', 'performers', 'tags', 'groups', 'galleries', 'markers',
-    '#Tools', 'cover', 'scrape'],
+    '#Tools', 'cover', 'scrape', 'delete'],
   image: ['#Details', 'title', 'code', 'date', 'photographer', 'details', 'urls',
     '#Rating', 'rating', 'o', 'organized',
-    '#Links', 'studio', 'performers', 'tags', 'galleries'],
+    '#Links', 'studio', 'performers', 'tags', 'galleries',
+    '#Tools', 'scrape', 'delete'],
   gallery: ['#Details', 'title', 'code', 'date', 'photographer', 'details', 'urls',
     '#Rating', 'rating', 'organized',
-    '#Links', 'studio', 'performers', 'tags', 'scenes'],
+    '#Links', 'studio', 'performers', 'tags', 'scenes',
+    '#Tools', 'scrape', 'delete'],
   group: ['#Details', 'name', 'aliasText', 'date', 'duration', 'director', 'synopsis', 'urls', 'frontImage', 'backImage',
     '#Rating', 'rating',
-    '#Links', 'studio', 'tags', 'containing', 'subgroups'],
+    '#Links', 'studio', 'tags', 'containing', 'subgroups',
+    '#Tools', 'scrape', 'delete'],
   performer: ['#Details', 'name', 'disambiguation', 'aliasList', 'gender', 'birthdate', 'deathDate', 'country', 'height',
     'details', 'urls', 'image',
     '#Rating', 'rating', 'favorite',
-    '#Links', 'tags'],
+    '#Links', 'tags',
+    '#Tools', 'scrape', 'delete'],
   studio: ['#Details', 'name', 'aliases', 'details', 'urls', 'image',
     '#Rating', 'rating', 'favorite',
-    '#Links', 'parent', 'tags'],
+    '#Links', 'parent', 'tags',
+    '#Tools', 'delete'],
   tag: ['#Details', 'name', 'aliases', 'description', 'image',
     '#Rating', 'favorite',
-    '#Links', 'parents', 'children'],
+    '#Links', 'parents', 'children',
+    '#Tools', 'delete'],
 };
 
 /** Gender values (GenderEnum) and how they are shown. */
@@ -240,15 +249,55 @@ export function openEditor(kind, item, onSaved, onClose) {
     scrape: {
       label: 'Scrape metadata…',
       value: () => '',
-      run: () => scrapeScene(item, async (applied) => {
+      run: () => scrapeItem(kind, item, async (applied) => {
         if (!applied) return;
         changed = true;
         // Reload so the panel shows the scraped values.
         try {
-          Object.assign(item, await api.getScene(item.id));
+          Object.assign(item, await api.getItem(kind, item.id));
         } catch (e) { /* the page reloads when the panel closes anyway */ }
         render();
+        if (onSaved) onSaved(item);
       }),
+    },
+    delete: {
+      label: `Delete this ${kind}…`,
+      danger: true,
+      value: () => '',
+      run: async () => {
+        const name = nameOf(kind, item);
+        let deleteFile = false;
+        if (kind === 'scene' || kind === 'image' || kind === 'gallery') {
+          const what = kind === 'gallery' ? 'the gallery’s files (zip or images)' : 'the file';
+          const choice = await chooseOption({
+            title: `Delete “${name}”?`,
+            options: [
+              { label: 'Remove from Stash, keep the file', value: 'keep' },
+              { label: `Also delete ${what} from disk`, value: 'file' },
+            ],
+          });
+          if (!choice) return;
+          deleteFile = choice === 'file';
+        }
+        const ok = await confirmDialog({
+          title: `Delete “${name}”?`,
+          message: deleteFile
+            ? 'It is removed from Stash and its file is deleted from disk. This can’t be undone.'
+            : 'It is removed from Stash. This can’t be undone.',
+          confirm: 'Delete',
+          safe: true,
+        });
+        if (!ok) return;
+        try {
+          await api.deleteItem(kind, item.id, { deleteFile });
+        } catch (err) {
+          toast(`Couldn't delete: ${err.message}`, 'error');
+          return;
+        }
+        close();
+        toast(`Deleted “${name}”`);
+        goBack();
+      },
     },
     rating: {
       label: 'Rating',
@@ -659,7 +708,7 @@ export function openEditor(kind, item, onSaved, onClose) {
       }
       const a = actions[key];
       const el = h('div', {
-        class: 'menu-item focusable',
+        class: 'menu-item focusable' + (a.danger ? ' danger' : ''),
         onSelect: () => {
           lines.__focusedKey = key;
           a.run();

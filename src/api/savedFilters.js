@@ -97,6 +97,15 @@ function inputFields(typeName) {
   return typeCache[typeName];
 }
 
+/**
+ * The fields of a filter type with their input types, e.g.
+ * { rating100: {kind: 'INPUT_OBJECT', name: 'IntCriterionInput'}, organized: {kind: 'SCALAR', name: 'Boolean'} }.
+ * Used by the filter panel to offer every criterion the server knows.
+ */
+export function filterFields(typeName) {
+  return inputFields(typeName);
+}
+
 // ---------------------------------------------------------------------------
 // Conversion
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {
   "name": "stash-webos",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A Stash (stashapp) client for LG webOS TVs, built for the remote and careful with the TV's limited storage.",
   "private": true,
   "type": "module",

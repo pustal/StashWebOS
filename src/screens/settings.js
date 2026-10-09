@@ -17,6 +17,7 @@ import { canEdit } from '../ui/editor.js';
 import {
   TASKS, jobQueue, startTask, stopAllJobs,
 } from '../api/tasks.js';
+import { openScrapers, openStashBoxes, openTaskOptions } from '../ui/libraryPanels.js';
 
 /* global __APP_VERSION__ */
 
@@ -85,6 +86,9 @@ export class SettingsScreen extends Screen {
       }, t.note));
     }
     lines.push(this.stopLine);
+    lines.push(this.line('Task options', () => '', () => openTaskOptions(), 'What Scan and Generate do, and the sources Identify uses.'));
+    lines.push(this.line('Scrapers', () => '', () => openScrapers(() => this.pollJobs()), 'Install, update or remove scrapers.'));
+    lines.push(this.line('Stash-box servers', () => '', () => openStashBoxes(), 'For scraping and Identify (e.g. StashDB).'));
     return lines;
   }
 

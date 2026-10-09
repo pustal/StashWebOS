@@ -163,3 +163,91 @@ export async function jobQueue() {
 export function stopAllJobs() {
   return getClient().query('mutation { stopAllJobs }');
 }
+
+// ---------------------------------------------------------------------------
+// Task options (Stash's saved defaults)
+// ---------------------------------------------------------------------------
+
+/** The saved task defaults (scan, generate, autoTag, identify…). */
+export function getTaskDefaults() {
+  return defaults();
+}
+
+/**
+ * Boolean options a task input accepts, in schema order.
+ * @param {'ScanMetadataInput'|'GenerateMetadataInput'} typeName
+ * @returns {Promise<string[]>}
+ */
+export async function booleanOptions(typeName) {
+  const fields = await typeFields(typeName);
+  return Object.keys(fields).filter((k) => fields[k].name === 'Boolean');
+}
+
+/**
+ * Saves one task's defaults in Stash (they are what its web UI's Tasks page
+ * shows, and what this app runs).
+ * @param {'scan'|'generate'|'identify'} key
+ * @param {Object} value  the whole option object for that task
+ */
+export async function saveTaskDefaults(key, value) {
+  const types = { scan: 'ScanMetadataInput', generate: 'GenerateMetadataInput', identify: 'IdentifyMetadataInput' };
+  const input = { [key]: await fitInput(types[key], value) };
+  await getClient().query('mutation ($i: ConfigDefaultSettingsInput!) { configureDefaults(input: $i) { deleteFile } }', { i: input });
+}
+
+// ---------------------------------------------------------------------------
+// Scraper packages and stash-box servers
+// ---------------------------------------------------------------------------
+
+/** Installed scraper packages. */
+export async function installedScrapers() {
+  const data = await getClient().query('{ installedPackages(type: Scraper) { package_id name version sourceURL } }');
+  return (data.installedPackages || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Scraper package sources (e.g. the community index). */
+export async function scraperSources() {
+  const data = await getClient().query('{ configuration { general { scraperPackageSources { name url } } } }');
+  return data.configuration.general.scraperPackageSources || [];
+}
+
+/** Packages a source offers. */
+export async function availableScrapers(sourceUrl) {
+  const data = await getClient().query('query ($s: String!) { availablePackages(type: Scraper, source: $s) { package_id name version sourceURL } }', { s: sourceUrl });
+  return (data.availablePackages || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Installs, updates or uninstalls scraper packages (a background job).
+ * @param {'install'|'update'|'uninstall'} action
+ * @param {Array<{package_id: string, sourceURL: string}>} [packages]  update: omit for all
+ */
+export function changeScrapers(action, packages) {
+  const m = { install: 'installPackages', update: 'updatePackages', uninstall: 'uninstallPackages' }[action];
+  const specs = packages ? packages.map((p) => ({ id: p.package_id, sourceURL: p.sourceURL })) : null;
+  // Install and uninstall need a list; update takes none for "all".
+  const varType = action === 'update' ? '[PackageSpecInput!]' : '[PackageSpecInput!]!';
+  return getClient().query(`mutation ($p: ${varType}) { ${m}(type: Scraper, packages: $p) }`, { p: specs });
+}
+
+/** Re-reads the scraper files (after installing or editing scrapers). */
+export function reloadScrapers() {
+  return getClient().query('mutation { reloadScrapers }');
+}
+
+/** Configured stash-box servers (with their API keys, to save them back). */
+export async function stashBoxes() {
+  const data = await getClient().query('{ configuration { general { stashBoxes { name endpoint api_key max_requests_per_minute } } } }');
+  return data.configuration.general.stashBoxes || [];
+}
+
+/** Replaces the list of stash-box servers. */
+export function saveStashBoxes(list) {
+  return getClient().query('mutation ($i: ConfigGeneralInput!) { configureGeneral(input: $i) { stashBoxes { endpoint } } }', {
+    i: {
+      stashBoxes: list.map((b) => ({
+        name: b.name, endpoint: b.endpoint, api_key: b.api_key, max_requests_per_minute: b.max_requests_per_minute || undefined,
+      })),
+    },
+  });
+}

@@ -7,7 +7,7 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
 ## Features
 
 - **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted. Or, under Settings → Home screen, use the front page you set up in Stash itself (its saved-filter and "recently added/released" rows).
-- **Browse**: Scenes, Groups, Markers, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), quick toggles (Unwatched, In progress, Favourites, names-only tags), a **Filter** panel (text search, rating, tags, performers and studios with match all/any and exclusions, organized, resolution, length, date, O-count, number of performers, markers, file path, gender, age, country and scene/image counts, depending on the section) and your **saved filters** from Stash, which you can also create, update, rename and delete from the TV.
+- **Browse**: Scenes, Groups, Markers, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), quick toggles (Unwatched, In progress, Favourites, names-only tags), a **Filter** panel (text search, rating, tags, performers and studios with match all/any and exclusions, organized, resolution, length, date, O-count, number of performers, markers, file path, gender, age, country and scene/image counts, depending on the section, plus **More criteria** for any other number, date, text, yes/no, resolution or tag/performer/studio field the server offers) and your **saved filters** from Stash, which you can also create, update, rename and delete from the TV.
 - **Markers**: browse every scene marker on its own, by date, title, scene, time or duration. Choosing one plays its scene from that point. Tag pages have a Markers tab too. With editing on, markers can be added, changed and deleted (see Editing and Player).
 - **Scene page**: Resume / Play from start, details, tech info, performers, studio, groups, galleries, tags and markers. Choosing a marker starts playback at that point.
 - **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups, plus markers on tag pages (empty tabs are hidden). Animated tag images (GIF, WebP, APNG) can stay animated: see Settings → Animated thumbnails. You can mark a performer as a favourite from their page.
@@ -23,10 +23,11 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - links of galleries (studio, performers, tags, scenes), images (studio, performers, tags, galleries) and groups (studio, tags), and the tags of performers and studios
   - hierarchies: a tag's parent tags and sub-tags, a studio's parent studio, and the groups a group is part of and its sub-groups
   - new tags, performers and studios: when a search finds nothing with that exact name, the picker offers to create it (name only)
-  - **scraping** a scene with the scrapers and stash-box servers set up in Stash, or from a scene page URL: a review panel lists each field that would change (title, date, details, links, studio, performers, tags, cover…), each can be skipped, and missing studios, performers and tags are created when applied
+  - **scraping** scenes, galleries, images, groups and performers with the scrapers and stash-box servers set up in Stash, or from a page URL (performers are searched by name): a review panel lists each field that would change (title, date, details, links, studio, performers, tags, cover…), each can be skipped, and missing studios, performers and tags are created when applied
+  - **deleting** any item; scenes, images and galleries can also have their files deleted from disk (you choose, then confirm, with Cancel highlighted)
 
   Settings → Editing → Off hides every Edit button (and the library tasks below), for a view-only TV.
-- **Library tasks** (Settings → Library tasks): Scan for new files, Generate, Auto tag, Identify and Clean, with the options saved in Stash's own Tasks page, a live status line and Stop.
+- **Library tasks** (Settings → Library tasks): Scan for new files, Generate, Auto tag, Identify and Clean, with a live status line and Stop. **Task options** sets what Scan and Generate do and Identify's sources (saved in Stash, shared with its Tasks page). **Scrapers** installs, updates and removes scraper packages; **Stash-box servers** adds and removes servers such as StashDB.
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
@@ -99,7 +100,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_0.6.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_0.7.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -156,13 +157,13 @@ src/
   api/stash.js        queries, mutations, sort options and filters
   api/login.js        username/password sign-in through the webOS service
   api/savedFilters.js Stash saved filters and front page (schema-driven filter conversion)
-  api/tasks.js        library tasks and the job queue (with Stash's saved task defaults)
+  api/tasks.js        library tasks, job queue, task options, scraper packages, stash-box servers
   cache/imageCache.js bounded thumbnail cache (see above)
   nav/focus.js        spatial navigation for the D-pad and Magic Remote
   player/sources.js   choosing direct play vs transcode and fallbacks
   player/seekPreview.js  sprite-sheet seek thumbnails
   ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs,
-                      edit panel (editor.js), marker editor, filter panel, scene scraper
+                      edit panel (editor.js), marker editor, filter panel, scraper, library setup panels
   screens/            Home, Browse, Scene, Entity, Gallery, Group, Viewer, Search, Settings, Setup, Player
   styles/app.css      all styles
 ```
@@ -180,7 +181,6 @@ Stash saves filters in its web UI's format, not the format its API accepts. [`sr
 
 ## Not included yet
 
-- Scraping performers, galleries, groups and images (scenes only for now)
-- Changing task options on the TV (tasks use the options saved in Stash's Tasks page) and setting up scrapers or stash-box servers
-- Filter criteria beyond those in the Filter panel (criteria made in the web UI are kept, and can be removed)
-- Deleting scenes, images, galleries or files
+- Nested filters (e.g. "scenes whose performers are…") and AND/OR combinations of criteria; filters made that way in the web UI still work and are kept
+- Other Stash settings (library folders, transcoding, interface, plugins); use Stash's web UI
+- Deleting several items at once

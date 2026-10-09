@@ -33,3 +33,15 @@ export function openSection(name) {
   if (!make || !router) return;
   router.reset(make());
 }
+
+/**
+ * Goes back one screen, e.g. after the item on screen was deleted. The
+ * screen it returns to reloads its list when it can (`reload()`), so the
+ * deleted item disappears from it.
+ */
+export function goBack() {
+  if (!router) return;
+  router.back();
+  const top = router.top;
+  if (top && typeof top.reload === 'function') top.reload();
+}

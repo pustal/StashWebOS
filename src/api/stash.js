@@ -217,7 +217,7 @@ export async function getPerformer(id) {
     findPerformer(id: $id) {
       id name disambiguation gender birthdate death_date country ethnicity height_cm
       measurements hair_color eye_color alias_list details favorite image_path rating100
-      career_start career_end urls
+      career_start career_end urls tattoos piercings
       scene_count gallery_count image_count group_count
       tags { id name }
     }
@@ -376,6 +376,13 @@ export const IMAGE_SORTS = [
   { key: 'rating', label: 'Rating', direction: 'DESC' },
   { key: 'random', label: 'Shuffle', direction: 'ASC' },
 ];
+
+/** One image with the card/viewer fields. */
+export async function getImage(id) {
+  const data = await q(`${IMAGE_CARD}
+    query ($id: ID!) { findImage(id: $id) { ...ImageCard } }`, { id });
+  return data.findImage;
+}
 
 /** Finds images (filter is an ImageFilterType). */
 export async function findImages(opts) {
@@ -582,6 +589,36 @@ const UPDATES = {
 export function updateItem(kind, id, patch) {
   const [mutation, type] = UPDATES[kind];
   return q(`mutation ($i: ${type}!) { ${mutation}(input: $i) { id } }`, { i: Object.assign({ id }, patch) });
+}
+
+/** Getter for one full item per kind (what the detail screens load). */
+export function getItem(kind, id) {
+  const getters = {
+    scene: getScene, image: getImage, gallery: getGallery, group: getGroup, performer: getPerformer, studio: getStudio, tag: getTag,
+  };
+  return getters[kind](id);
+}
+
+/**
+ * Deletes an item from Stash.
+ * @param {'scene'|'image'|'gallery'|'group'|'performer'|'studio'|'tag'} kind
+ * @param {string} id
+ * @param {{deleteFile?: boolean}} [opts]  scenes, images, galleries: also
+ *   delete the file(s) from disk (generated files are always removed)
+ */
+export function deleteItem(kind, id, opts) {
+  const deleteFile = !!(opts && opts.deleteFile);
+  if (kind === 'scene' || kind === 'image') {
+    const m = `${kind}Destroy`;
+    const t = kind === 'scene' ? 'SceneDestroyInput' : 'ImageDestroyInput';
+    return q(`mutation ($i: ${t}!) { ${m}(input: $i) }`, { i: { id, delete_file: deleteFile, delete_generated: true } });
+  }
+  if (kind === 'gallery') {
+    return q('mutation ($i: GalleryDestroyInput!) { galleryDestroy(input: $i) }', { i: { ids: [id], delete_file: deleteFile, delete_generated: true } });
+  }
+  const m = `${kind}Destroy`;
+  const t = `${kind.charAt(0).toUpperCase()}${kind.slice(1)}DestroyInput`;
+  return q(`mutation ($i: ${t}!) { ${m}(input: $i) }`, { i: { id } });
 }
 
 /**
