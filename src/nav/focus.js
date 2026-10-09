@@ -315,6 +315,16 @@ export function ensureVisible(el) {
     }
   }
 
+  // Scrollable lists inside dialogs (`scroll-y`): keep the item in view.
+  const list = el.closest('.scroll-y');
+  if (list) {
+    const top = el.offsetTop - list.offsetTop;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (top + el.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = top + el.offsetHeight - list.clientHeight;
+    }
+  }
+
   // Fixed-position layers (dialogs, player overlay) never scroll the page.
   if (el.closest('.no-scroll')) return;
 

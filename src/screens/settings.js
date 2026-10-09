@@ -131,6 +131,14 @@ export class SettingsScreen extends Screen {
           });
           if (ok) this.opts.onDisconnect();
         }),
+        h('h2', { class: 'settings-heading' }, 'Library'),
+        this.choice('Home screen', 'homeLayout', [
+          { value: 'app', label: "This app's rows" },
+          { value: 'stash', label: "Stash's front page" },
+        ], 'Stash\'s front page uses the rows and saved filters set up in Stash (Settings, Interface).'),
+        this.choice('Editing', 'allowEditing',
+          [{ value: true, label: 'On' }, { value: false, label: 'Off (view only)' }],
+          'Ratings, favourites, O-count, tags and titles.'),
         h('h2', { class: 'settings-heading' }, 'About'),
         h('p', { class: 'about-text' }, `Stash for webOS ${__APP_VERSION__}. An unofficial client for Stash.`),
       ]),

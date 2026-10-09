@@ -59,6 +59,10 @@ export const DEFAULTS = {
   skipForward: 30,
   /** Save resume position / play count back to Stash. */
   trackActivity: true,
+  /** Show Edit buttons (ratings, favourites, tags…). Off for a view-only TV. */
+  allowEditing: true,
+  /** Home screen rows: 'app' (this app's rows) or 'stash' (Stash's front page). */
+  homeLayout: 'app',
   /** Seconds each image stays on screen in a slideshow. */
   slideshowSeconds: 5,
   /** Show the scrubbing thumbnails (sprite sheet) while seeking. */

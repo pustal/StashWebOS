@@ -8,7 +8,8 @@ import { Collection } from '../ui/collection.js';
 import { createRow } from '../ui/row.js';
 import { hasRealImage, stashImage, tagChip } from '../ui/cards.js';
 import { openItem } from '../ui/navigate.js';
-import { focusFirst, getFocused } from '../nav/focus.js';
+import { focus, focusFirst, getFocused } from '../nav/focus.js';
+import { editButton } from '../ui/editor.js';
 import { toast } from '../ui/overlay.js';
 import * as api from '../api/stash.js';
 import {
@@ -73,6 +74,8 @@ export class GroupScreen extends Screen {
     if (g.back_image_path) {
       actions.push(h('div', { class: 'button ghost focusable', onSelect: () => this.showCovers(1) }, [icon('image'), 'Back cover']));
     }
+    const edit = editButton('group', () => this.group, () => this.afterEdit());
+    if (edit) actions.push(edit);
     this.header.innerHTML = '';
     this.header.appendChild(h('div', {
       class: 'entity-art entity-art-group',
@@ -84,6 +87,13 @@ export class GroupScreen extends Screen {
       g.synopsis ? h('p', { class: 'detail-text' }, g.synopsis) : null,
       h('div', { class: 'detail-actions nav-group' }, actions),
     ]));
+  }
+
+  /** Re-renders the header after an edit and keeps the highlight on Edit. */
+  afterEdit() {
+    this.renderHeader(this.group);
+    const b = this.header.querySelector('.edit-button');
+    if (b && this.isTop()) focus(b);
   }
 
   renderExtras(g) {

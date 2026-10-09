@@ -7,10 +7,11 @@ import { h, icon } from '../util/dom.js';
 import { Collection } from '../ui/collection.js';
 import { stashImage } from '../ui/cards.js';
 import { toast } from '../ui/overlay.js';
-import { focusFirst } from '../nav/focus.js';
+import { focus, focusFirst } from '../nav/focus.js';
+import { editButton } from '../ui/editor.js';
 import * as api from '../api/stash.js';
 import {
-  ageFrom, countryName, formatDate, genderLabel,
+  ageFrom, countryName, formatDate, genderLabel, stars,
 } from '../util/format.js';
 
 const KINDS = {
@@ -49,6 +50,7 @@ export class EntityScreen extends Screen {
       const full = await this.conf.load(this.item.id);
       if (full) {
         this.item = full;
+        this.loaded = true;
         this.renderHeader(full);
         this.collection.setCounts({
           gallery: full.gallery_count, image: full.image_count, group: full.group_count,
@@ -79,6 +81,8 @@ export class EntityScreen extends Screen {
       text = e.description || '';
     }
     if (this.kind === 'performer' && e.birthdate) facts.push(`Born ${formatDate(e.birthdate)}`);
+    if (e.rating100) facts.push(`${stars(e.rating100)} ★`);
+    if (this.kind !== 'performer' && e.favorite) facts.push('Favourite');
 
     const actions = [];
     if (this.kind === 'performer' && e.favorite !== undefined) {
@@ -86,6 +90,11 @@ export class EntityScreen extends Screen {
         class: 'button ghost focusable' + (e.favorite ? ' on' : ''),
         onSelect: (b) => this.toggleFavorite(b),
       }, [icon(e.favorite ? 'heartFilled' : 'heart'), e.favorite ? 'Favourite' : 'Add to favourites']));
+    }
+    // Editing needs the full item (loaded in mount); the card data lacks fields.
+    if (this.loaded) {
+      const edit = editButton(this.kind, () => this.item, () => this.afterEdit());
+      if (edit) actions.push(edit);
     }
 
     this.header.innerHTML = '';
@@ -99,6 +108,13 @@ export class EntityScreen extends Screen {
       text ? h('p', { class: 'detail-text' }, text) : null,
       actions.length ? h('div', { class: 'detail-actions nav-group' }, actions) : null,
     ]));
+  }
+
+  /** Re-renders the header after an edit and keeps the highlight on Edit. */
+  afterEdit() {
+    this.renderHeader(this.item);
+    const b = this.header.querySelector('.edit-button');
+    if (b && this.isTop()) focus(b);
   }
 
   async toggleFavorite(button) {

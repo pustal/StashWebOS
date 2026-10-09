@@ -74,6 +74,8 @@ export async function serverInfo() {
     sceneCount: data.findScenes.count,
     minimumPlayPercent: typeof ui.minimumPlayPercent === 'number' ? ui.minimumPlayPercent : 0,
     trackActivity: ui.trackActivity !== false,
+    /** Stash's own home page rows (Settings → Interface), used optionally. */
+    frontPageContent: Array.isArray(ui.frontPageContent) ? ui.frontPageContent : [],
   };
 }
 
@@ -227,7 +229,7 @@ export async function getPerformer(id) {
 export async function getStudio(id) {
   const data = await q(`query ($id: ID!) {
     findStudio(id: $id) {
-      id name details image_path favorite
+      id name details image_path favorite rating100
       scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
       parent_studio { id name }
       child_studios { id }
@@ -299,7 +301,7 @@ export async function getGallery(id) {
   const data = await q(`${SCENE_CARD}
     query ($id: ID!) {
       findGallery(id: $id) {
-        id title date details photographer rating100 image_count
+        id title date details photographer rating100 organized image_count
         paths { cover }
         files { basename }
         folder { path }
@@ -323,7 +325,7 @@ export async function getGallery(id) {
  */
 const IMAGE_CARD = `
 fragment ImageCard on Image {
-  id title date rating100
+  id title date rating100 o_counter organized
   paths { thumbnail image }
   studio { id name }
   performers { id name }
@@ -451,4 +453,45 @@ export const filters = {
  */
 export function sortKey(key, seed) {
   return key === 'random' ? `random_${seed}` : key;
+}
+
+// ---------------------------------------------------------------------------
+// Editing
+// ---------------------------------------------------------------------------
+
+/** Update mutation and input type per kind. */
+const UPDATES = {
+  scene: ['sceneUpdate', 'SceneUpdateInput'],
+  image: ['imageUpdate', 'ImageUpdateInput'],
+  gallery: ['galleryUpdate', 'GalleryUpdateInput'],
+  group: ['groupUpdate', 'GroupUpdateInput'],
+  performer: ['performerUpdate', 'PerformerUpdateInput'],
+  studio: ['studioUpdate', 'StudioUpdateInput'],
+  tag: ['tagUpdate', 'TagUpdateInput'],
+};
+
+/**
+ * Saves changed fields of an item.
+ * @param {'scene'|'image'|'gallery'|'group'|'performer'|'studio'|'tag'} kind
+ * @param {string} id
+ * @param {Object} patch  fields of the *UpdateInput, e.g. { rating100: 80 }
+ */
+export function updateItem(kind, id, patch) {
+  const [mutation, type] = UPDATES[kind];
+  return q(`mutation ($i: ${type}!) { ${mutation}(input: $i) { id } }`, { i: Object.assign({ id }, patch) });
+}
+
+/**
+ * Adds (+1) or removes (-1) one O for a scene or image.
+ * @returns {Promise<number>} the new count
+ */
+export async function changeO(kind, id, delta) {
+  if (kind === 'scene') {
+    const m = delta > 0 ? 'sceneAddO' : 'sceneDeleteO';
+    const data = await q(`mutation ($id: ID!) { ${m}(id: $id) { count } }`, { id });
+    return data[m].count;
+  }
+  const m = delta > 0 ? 'imageIncrementO' : 'imageDecrementO';
+  const data = await q(`mutation ($id: ID!) { ${m}(id: $id) }`, { id });
+  return data[m];
 }

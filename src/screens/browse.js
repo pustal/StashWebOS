@@ -9,7 +9,8 @@
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
 import { Grid } from '../ui/grid.js';
-import { chooseOption } from '../ui/overlay.js';
+import { chooseOption, toast } from '../ui/overlay.js';
+import { SECTION_MODES, findSavedFilters, resolveSavedFilter } from '../api/savedFilters.js';
 import { focusFirst } from '../nav/focus.js';
 import { openItem } from '../ui/navigate.js';
 import * as api from '../api/stash.js';
@@ -131,6 +132,13 @@ export class BrowseScreen extends Screen {
       }, [icon('check', 'toggle-check'), h('span', null, 'Names only')])]
       : [];
 
+    // Saved filters from Stash (the button stays hidden if there are none).
+    this.saved = null;
+    this.savedLabel = h('span', null, 'Saved filters');
+    this.savedButton = h('div', {
+      class: 'button ghost toggle focusable', style: { display: 'none' }, onSelect: () => this.pickSaved(),
+    }, [icon('filter'), this.savedLabel]);
+
     this.grid = new Grid({
       kind: this.config.kind,
       perPage: 40,
@@ -143,24 +151,67 @@ export class BrowseScreen extends Screen {
 
     this.el.appendChild(h('header', { class: 'page-header' }, [
       h('div', { class: 'page-heading' }, [h('h1', { class: 'page-title' }, this.config.title), this.countEl]),
-      h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [sortButton].concat(toggleButtons, extra)),
+      h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [this.savedButton, sortButton].concat(toggleButtons, extra)),
     ]));
     this.el.appendChild(this.grid.el);
   }
 
-  /** Builds the query for one page from the sort and active toggles. */
+  async mount() {
+    // Offer Stash's saved filters for this section, if any exist.
+    try {
+      this.savedFilters = await findSavedFilters(SECTION_MODES[this.section]);
+      if (this.savedFilters.length) this.savedButton.style.display = '';
+    } catch (e) {
+      this.savedFilters = [];
+    }
+  }
+
+  /** Builds the query for one page from the saved filter, sort and toggles. */
   fetch(page, perPage) {
     let filter = this.config.baseFilter ? this.config.baseFilter() : null;
+    if (this.saved) filter = Object.assign({}, filter || {}, this.saved.query.filter);
     for (const t of this.config.toggles) {
       if (this.activeToggles[t.id]) filter = Object.assign({}, filter || {}, t.filter);
     }
+    // A saved filter brings its own sort until the user picks another one.
+    const useSavedSort = this.saved && this.saved.query.sort && !this.sortChosen;
     return this.config.find({
       page,
       perPage,
-      sort: api.sortKey(this.sort.key, this.seed),
-      direction: this.sort.direction,
+      sort: useSavedSort ? this.saved.query.sort : api.sortKey(this.sort.key, this.seed),
+      direction: useSavedSort ? this.saved.query.direction : this.sort.direction,
+      q: this.saved ? this.saved.query.q : undefined,
       filter,
     });
+  }
+
+  /** Applies (or clears) one of Stash's saved filters. */
+  async pickSaved() {
+    const id = await chooseOption({
+      title: 'Saved filters',
+      options: [{ label: 'None', value: '' }].concat(this.savedFilters.map((f) => ({ label: f.name, value: f.id }))),
+      selected: this.saved ? this.saved.id : '',
+    });
+    if (id === undefined) return;
+    if (!id) {
+      this.saved = null;
+      this.savedLabel.textContent = 'Saved filters';
+      this.savedButton.classList.remove('on');
+      this.reload();
+      return;
+    }
+    const f = this.savedFilters.find((x) => x.id === id);
+    try {
+      const resolved = await resolveSavedFilter(f);
+      this.saved = { id, name: f.name, query: resolved.query };
+    } catch (err) {
+      toast(`Couldn't use "${f.name}": ${err.message}`, 'error');
+      return;
+    }
+    this.sortChosen = false;
+    this.savedLabel.textContent = f.name;
+    this.savedButton.classList.add('on');
+    this.reload();
   }
 
   reload() {
@@ -177,6 +228,7 @@ export class BrowseScreen extends Screen {
     if (!key) return;
     if (key === 'random') this.seed = Math.floor(Math.random() * 1e8); // new shuffle each time
     this.sort = this.config.sorts.find((s) => s.key === key);
+    this.sortChosen = true;
     this.sortLabel.textContent = this.sort.label;
     saveSort(this.section, key);
     this.reload();

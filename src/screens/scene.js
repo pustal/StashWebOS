@@ -7,7 +7,8 @@ import { h, icon } from '../util/dom.js';
 import { createRow } from '../ui/row.js';
 import { personChip, tagChip } from '../ui/cards.js';
 import { openItem } from '../ui/navigate.js';
-import { focusFirst } from '../nav/focus.js';
+import { focus, focusFirst } from '../nav/focus.js';
+import { canEdit, openEditor } from '../ui/editor.js';
 import { bindImage } from '../cache/imageCache.js';
 import * as api from '../api/stash.js';
 import {
@@ -175,7 +176,23 @@ export class SceneScreen extends Screen {
       'data-autofocus': resume ? null : true,
       onSelect: () => openItem('player', s, { start: 0 }),
     }, [icon(resume ? 'restart' : 'play'), resume ? 'Play from start' : 'Play']));
+    if (canEdit()) {
+      this.editButton = h('div', { class: 'button ghost focusable', onSelect: () => this.edit() }, [icon('edit'), 'Edit']);
+      this.actions.appendChild(this.editButton);
+    }
     if (this.isTop()) focusFirst(this.actions);
+  }
+
+  /** Opens the edit panel; reloads the page after it closes if anything changed. */
+  edit() {
+    openEditor('scene', this.scene, null, async (changed) => {
+      if (!changed) return;
+      try {
+        this.scene = await api.getScene(this.sceneId);
+      } catch (e) { /* keep showing what we have */ }
+      this.render();
+      if (this.editButton && this.isTop()) focus(this.editButton);
+    });
   }
 
   focusDefault() {

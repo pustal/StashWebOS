@@ -6,13 +6,19 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
 
 ## Features
 
-- **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted.
-- **Browse**: Scenes, Groups, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section) and filters (Unwatched, In progress, Favourites, names-only tags).
+- **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted. Or, under Settings → Home screen, use the front page you set up in Stash itself (its saved-filter and "recently added/released" rows).
+- **Browse**: Scenes, Groups, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), filters (Unwatched, In progress, Favourites, names-only tags) and your **saved filters** from Stash.
 - **Scene page**: Resume / Play from start, details, tech info, performers, studio, groups, galleries, tags and markers. Choosing a marker starts playback at that point.
 - **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups (empty tabs are hidden). You can mark a performer as a favourite from their page.
 - **Galleries**: cover, details, chapters (each opens the viewer at that image), performers, tags, linked scenes and the gallery's images.
 - **Groups** (Stash's former "movies"): front and back covers, synopsis, sub-groups and scenes in running order. **Play all** plays them back to back.
-- **Image viewer**: full screen, Left/Right through the whole result (further pages load as needed), OK for details, Play for a slideshow (speed in Settings). Animated GIFs keep moving and short clips play.
+- **Image viewer**: full screen, Left/Right through the whole result (further pages load as needed), Play for a slideshow (speed in Settings). OK opens a panel with details and **Zoom in/out, Rotate, Slideshow and Edit**. When zoomed in, the arrows move around the image and Back returns to the whole image. Animated GIFs keep moving and short clips play.
+- **Editing** (Edit button on scene, gallery, group, performer, studio and tag pages, and in the image viewer). Every change saves straight away:
+  - ratings (half stars), favourites, O-count and Organized
+  - titles of scenes, images and galleries
+  - a scene's tags and performers (search-as-you-type picker)
+
+  Settings → Editing → Off hides every Edit button, for a view-only TV.
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
@@ -43,7 +49,7 @@ Settings themselves are a few hundred bytes in `localStorage`.
 ## Requirements
 
 - An LG TV on **webOS 4.0 (2018) or newer**. The bundle is transpiled for Chromium 53.
-- A Stash server on your network. If Stash has a username and password, you need an **API key** (Stash → Settings → Security → API Key).
+- A Stash server on your network. If Stash has a password, sign in either with its **API key** (Stash → Settings → Security → API Key) or with the **username and password** (see below).
 - Node.js 20 or newer on your computer (`.nvmrc` pins 22, so with nvm just run `nvm install` in the project folder). `npm install` refuses older versions.
 
 ## Install on the TV
@@ -63,18 +69,28 @@ Settings themselves are a few hundred bytes in `localStorage`.
    npm run tv:deploy
    ```
    Or run the steps one at a time: `npm run package`, `npm run tv:install`, `npm run tv:launch`.
-5. On the TV, enter the server address (for example `192.168.1.20:9999`) and the API key if you have one.
+5. On the TV, enter the server address (for example `192.168.1.20:9999`), then either the API key (leave it empty if Stash has no password) or switch to *Username and password*.
 
 To debug on the TV: `npm run tv:inspect` opens Chrome DevTools for the running app.
 
 The `tv:*` scripts read the app id and version from `appinfo.json`. Set `TV_DEVICE` to use a device name other than `tv`.
+
+### Signing in with a username and password
+
+The app always talks to Stash with an API key, or with nothing when Stash has no password. Signing in with a username and password is only a way to get that key:
+
+1. The bundled webOS service (`services/login`, packaged into the same `.ipk`) posts the username and password to Stash's login page.
+2. With the resulting session it reads Stash's API key. If Stash has no key yet, it creates one; an existing key is never replaced, so your other clients keep working.
+3. The app saves only the key. The password is never stored.
+
+A service is needed because a web app can't keep a Stash login session (Stash's cookie and CORS settings don't allow it), while the service runs in Node.js on the TV and can. If Stash turns out to have no password, nothing is needed and the app connects directly. In a desktop browser there is no webOS service, so use an API key there.
 
 ### Rooted TVs
 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_0.2.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_0.3.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -100,7 +116,7 @@ Use the arrow keys, Enter for OK, Escape or Backspace for Back, and Space for pl
 
 Seek presses add up: tap Right three times and the player makes one jump when you stop.
 
-In the image viewer: Left/Right (or ⏪/⏩) go to the previous/next image, OK or Up/Down shows details, Play starts the slideshow, Pause or OK stops it, and Back closes the viewer.
+In the image viewer: Left/Right (or ⏪/⏩) go to the previous/next image, OK or Up/Down opens the panel (details, Zoom in/out, Rotate, Slideshow, Edit), Play starts the slideshow and Pause or OK stops it. When zoomed in, the arrows move around the image. Back closes the panel, then returns a zoomed or rotated image to normal, then closes the viewer. Rotation is only for viewing and isn't saved to Stash.
 
 ## Progress tracking
 
@@ -121,6 +137,7 @@ index.html
 assets/icons/         launcher icons and splash, made from source/stash-logo.jpg by scripts/make-icons.py
 scripts/serve.mjs     local static server for development
 scripts/tv.mjs        install / launch / inspect on the TV (reads appinfo.json)
+services/login/       webOS JS service: username/password → API key (Node.js, runs on the TV)
 src/
   main.js             entry: router, sidebar, key handling, startup
   settings.js         settings and their defaults
@@ -128,20 +145,30 @@ src/
   polyfills.js        the few APIs missing on webOS 4
   api/client.js       GraphQL client (ApiKey header, timeouts, readable errors)
   api/stash.js        queries, mutations, sort options and filters
+  api/login.js        username/password sign-in through the webOS service
+  api/savedFilters.js Stash saved filters and front page (schema-driven filter conversion)
   cache/imageCache.js bounded thumbnail cache (see above)
   nav/focus.js        spatial navigation for the D-pad and Magic Remote
   player/sources.js   choosing direct play vs transcode and fallbacks
   player/seekPreview.js  sprite-sheet seek thumbnails
-  ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs
+  ui/                 router, sidebar, rows, grids, tabbed collections, cards, edit panel, menus and dialogs
   screens/            Home, Browse, Scene, Entity, Gallery, Group, Viewer, Search, Settings, Setup, Player
   styles/app.css      all styles
 ```
 
-No UI framework is used. On TV hardware, direct DOM code keeps the bundle around 110 KB packaged and scrolling smooth.
+No UI framework is used. On TV hardware, direct DOM code keeps the package around 170 KB and scrolling smooth.
+
+## Saved filters
+
+Saved filters appear in two places:
+
+- **Browse screens** get a *Saved filters* button (shown when Stash has saved filters for that section). A saved filter brings its own sort until you choose another one.
+- **Settings → Home screen → Stash's front page** replaces this app's home rows with the front page configured in Stash (Settings → Interface).
+
+Stash saves filters in its web UI's format, not the format its API accepts. [`src/api/savedFilters.js`](src/api/savedFilters.js) converts them by asking the server for the type of each filter field, so new filter fields in future Stash versions keep working. A field the server doesn't know is skipped rather than failing the whole filter. Scene marker filters aren't supported.
 
 ## Not included yet
 
-- Zooming and rotating images in the viewer
-- Editing metadata (other than performer favourites)
-- Saved filters from the Stash UI
-- Logging in with a username and password. Use an API key instead.
+- Scene markers as their own browse section
+- Creating or editing saved filters (they are made in Stash's web UI)
+- Editing studios, galleries or groups linked to a scene

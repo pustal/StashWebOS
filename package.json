@@ -1,6 +1,6 @@
 {
   "name": "stash-webos",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Stash (stashapp) client for LG webOS TVs, built for the remote and careful with the TV's limited storage.",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "build:dev": "node build.mjs --dev",
     "watch": "node build.mjs --dev --watch",
     "serve": "node scripts/serve.mjs",
-    "package": "npm run build && ares-package dist -o out",
+    "package": "npm run build && ares-package dist services/login -o out",
     "tv:install": "node scripts/tv.mjs install",
     "tv:launch": "node scripts/tv.mjs launch",
     "tv:inspect": "node scripts/tv.mjs inspect",

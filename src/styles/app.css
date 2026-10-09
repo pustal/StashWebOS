@@ -1475,3 +1475,70 @@ body.no-sidebar .content {
   width: 35%;
   height: 35%;
 }
+
+/* ------------------------------------------------------------------------ */
+/* 0.3: viewer zoom/rotate panel                                              */
+/* ------------------------------------------------------------------------ */
+
+/* Sized and placed by ViewerScreen.layout(); transforms do rotate/zoom/pan. */
+.screen-viewer .viewer-img,
+.screen-viewer .viewer-video {
+  width: auto;
+  height: auto;
+  object-fit: fill;
+  transform-origin: 50% 50%;
+  transition: transform 160ms ease-out;
+}
+.viewer-actions {
+  display: flex;
+  margin-top: 1.5rem;
+}
+.viewer-actions .ctrl {
+  margin: 0 0.8rem 0 0;
+}
+.ctrl.disabled {
+  opacity: 0.35;
+}
+.screen-viewer.show-info .viewer-info {
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0));
+}
+.screen-viewer.zoomed .viewer-counter::after {
+  content: ' · zoomed, Back to fit';
+}
+
+/* Edit panel, text prompt and search picker (0.3) ------------------------ */
+
+.editor-subject {
+  margin: -0.75rem 0 1.25rem 1rem;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.menu-list.scroll-y {
+  max-height: calc(100vh - 14rem);
+  overflow: hidden;
+}
+.picker-search {
+  margin: 0 0 0.75rem;
+}
+.picker-note {
+  margin: 0 0 0.75rem 1rem;
+  color: var(--muted);
+  min-height: 1.5rem;
+}
+.picker-list {
+  max-height: calc(100vh - 20rem);
+}
+.dialog-field {
+  margin-top: 1.5rem;
+}
+
+/* Setup: API key / username and password switch */
+.setup-tabs {
+  display: flex;
+  margin: 0.25rem 0 1.25rem;
+}
+.setup-tabs .button {
+  margin: 0 1rem 0 0;
+}

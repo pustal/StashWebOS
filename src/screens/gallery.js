@@ -8,7 +8,8 @@ import { Collection } from '../ui/collection.js';
 import { createRow } from '../ui/row.js';
 import { personChip, stashImage, tagChip } from '../ui/cards.js';
 import { openItem } from '../ui/navigate.js';
-import { focusFirst, getFocused } from '../nav/focus.js';
+import { focus, focusFirst, getFocused } from '../nav/focus.js';
+import { editButton } from '../ui/editor.js';
 import { toast } from '../ui/overlay.js';
 import * as api from '../api/stash.js';
 import { countOf, formatDate, galleryTitle, stars } from '../util/format.js';
@@ -74,8 +75,16 @@ export class GalleryScreen extends Screen {
           class: 'button primary focusable' + (g.image_count ? '' : ' disabled'),
           onSelect: () => this.openViewer(0, true),
         }, [icon('play'), 'Slideshow']),
+        editButton('gallery', () => this.gallery, () => this.afterEdit()),
       ]),
     ]));
+  }
+
+  /** Re-renders the header after an edit and keeps the highlight on Edit. */
+  afterEdit() {
+    this.renderHeader(this.gallery);
+    const b = this.header.querySelector('.edit-button');
+    if (b && this.isTop()) focus(b);
   }
 
   /** Chapters, performers, studio, tags and linked scenes. */

@@ -8,6 +8,9 @@ import { createRow } from '../ui/row.js';
 import { focusFirst, userActions } from '../nav/focus.js';
 import * as api from '../api/stash.js';
 import { bindImage } from '../cache/imageCache.js';
+import { frontPageRows } from '../api/savedFilters.js';
+import { getServerInfo } from '../session.js';
+import { getSettings } from '../settings.js';
 import {
   ageFrom, countOf, formatDate, formatDuration, galleryTitle, sceneTitle,
 } from '../util/format.js';
@@ -42,7 +45,57 @@ export class HomeScreen extends Screen {
     const sceneRow = (title, load) => createRow({ title, kind: 'scene', load, onFocusItem });
     const scenes = (opts) => () => api.findScenes(Object.assign({ perPage: ROW_SIZE }, opts)).then((r) => r.items);
 
-    const rows = [
+    const info = getServerInfo();
+    const rows = getSettings().homeLayout === 'stash' && info && info.frontPageContent.length
+      ? this.stashRows(info.frontPageContent, onFocusItem)
+      : this.appRows(onFocusItem, sceneRow, scenes);
+    for (const r of rows) this.rows.appendChild(r.el);
+
+    // Highlight the first row (in screen order) that has content, unless
+    // the user already moved somewhere (e.g. into the sidebar) meanwhile.
+    const actionsBefore = userActions();
+    (async () => {
+      for (const r of rows) {
+        const n = await r.ready; // eslint-disable-line no-await-in-loop
+        if (!n) continue;
+        if (this.isTop() && userActions() === actionsBefore) focusFirst(r.el);
+        break;
+      }
+    })();
+    Promise.all(rows.map((r) => r.ready)).then((counts) => {
+      if (counts.every((n) => !n)) {
+        this.rows.appendChild(h('div', { class: 'grid-empty' }, 'Your library is empty. Run a scan in Stash, then come back.'));
+      }
+    });
+  }
+
+  /**
+   * Rows from Stash's front page setting. Saved-filter rows only know their
+   * title and content type once the filter has loaded, so each starts as a
+   * placeholder that is swapped for the real row.
+   * @returns {Array<{el: HTMLElement, ready: Promise<number>}>}
+   */
+  stashRows(content, onFocusItem) {
+    return frontPageRows(content, ROW_SIZE).map((def) => {
+      const holder = h('div', { class: 'row-holder' });
+      const ready = def.prepare().then((row) => {
+        if (!row || !row.kind) return 0;
+        const real = createRow({
+          title: row.title, kind: row.kind, load: row.load, onFocusItem,
+        });
+        holder.appendChild(real.el);
+        return real.ready;
+      }).catch((err) => {
+        console.warn('front page row failed', err);
+        return 0;
+      });
+      return { el: holder, ready };
+    });
+  }
+
+  /** This app's own rows. */
+  appRows(onFocusItem, sceneRow, scenes) {
+    return [
       sceneRow('Continue watching', scenes({ sort: 'last_played_at', direction: 'DESC', filter: api.filters.inProgress() })),
       sceneRow('Recently added', scenes({ sort: 'created_at', direction: 'DESC' })),
       sceneRow('New releases', scenes({ sort: 'date', direction: 'DESC' })),
@@ -75,24 +128,6 @@ export class HomeScreen extends Screen {
         load: () => api.findTags({ perPage: ROW_SIZE, sort: 'scenes_count', direction: 'DESC' }).then((r) => r.items),
       }),
     ];
-    for (const r of rows) this.rows.appendChild(r.el);
-
-    // Highlight the first row (in screen order) that has content, unless
-    // the user already moved somewhere (e.g. into the sidebar) meanwhile.
-    const actionsBefore = userActions();
-    (async () => {
-      for (const r of rows) {
-        const n = await r.ready; // eslint-disable-line no-await-in-loop
-        if (!n) continue;
-        if (this.isTop() && userActions() === actionsBefore) focusFirst(r.el);
-        break;
-      }
-    })();
-    Promise.all(rows.map((r) => r.ready)).then((counts) => {
-      if (counts.every((n) => !n)) {
-        this.rows.appendChild(h('div', { class: 'grid-empty' }, 'Your library is empty. Run a scan in Stash, then come back.'));
-      }
-    });
   }
 
   focusDefault() {

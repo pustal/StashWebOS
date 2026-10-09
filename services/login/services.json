@@ -1,0 +1,10 @@
+{
+  "id": "org.stashwebos.app.service",
+  "description": "Stash for webOS sign-in helper",
+  "services": [
+    {
+      "name": "org.stashwebos.app.service",
+      "description": "Signs in to Stash with a username and password and returns its API key."
+    }
+  ]
+}
