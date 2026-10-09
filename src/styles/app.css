@@ -1217,6 +1217,12 @@ body.no-sidebar .content {
   background: var(--brass);
   border-radius: 0.125rem;
 }
+/* Marker with an end time: a translucent band from start to end. */
+.progress-ticks .tick.range {
+  margin-left: 0;
+  min-width: 0.25rem;
+  opacity: 0.55;
+}
 .progress-seek {
   position: absolute;
   top: 50%;

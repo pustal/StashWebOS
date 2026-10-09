@@ -131,13 +131,15 @@ function markerSub(m) {
   return parts.length ? h('div', { class: 'card-sub' }, parts.map((x) => h('span', null, x))) : null;
 }
 
-/** Marker card: screenshot at the marker, title and timestamp. */
+/** Marker card: screenshot at the marker, title and timestamp (or time range). */
 export function markerCard(m, onSelect) {
   const title = m.title || (m.primary_tag && m.primary_tag.name) || 'Marker';
   const card = h('div', { class: 'card card-scene card-marker focusable', onSelect: () => onSelect(m) }, [
     h('div', { class: 'thumb ratio-16x9' }, [
       stashImage(m.screenshot, 'scene'),
-      h('span', { class: 'badge badge-duration' }, formatDuration(m.seconds)),
+      h('span', { class: 'badge badge-duration' }, m.end_seconds
+        ? `${formatDuration(m.seconds)}–${formatDuration(m.end_seconds)}`
+        : formatDuration(m.seconds)),
     ]),
     h('div', { class: 'card-text' }, [
       h('div', { class: 'card-title' }, title),

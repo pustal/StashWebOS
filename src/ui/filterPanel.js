@@ -1,6 +1,7 @@
 /**
- * Filter panel for the browse screens: rating, tags, performers, studios,
- * organized and resolution, depending on the section.
+ * Filter panel for the browse screens: rating, tags, performers and studios
+ * (each with exclusions), organized, resolution, length, date, O-count and
+ * gender, depending on the section.
  *
  * Criteria are kept in the format Stash's web UI saves (see the top of
  * api/savedFilters.js), for two reasons:
@@ -13,20 +14,53 @@
  * under "Other criteria", where they can be removed.
  */
 import { chooseOption } from './overlay.js';
+import { formatDate } from '../util/format.js';
 import {
   editList, openLinesPanel, pickPerformer, pickStudio, pickTag,
 } from './panel.js';
 
 /** Criteria offered per browse section, in display order. */
 export const SECTION_CRITERIA = {
-  scenes: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution'],
-  groups: ['rating100', 'tags', 'performers', 'studios'],
+  scenes: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution', 'duration', 'date', 'o_counter'],
+  groups: ['rating100', 'tags', 'performers', 'studios', 'date'],
   markers: ['tags', 'scene_tags', 'performers'],
-  galleries: ['rating100', 'tags', 'performers', 'studios', 'organized'],
-  images: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution'],
-  performers: ['rating100', 'tags', 'studios'],
+  galleries: ['rating100', 'tags', 'performers', 'studios', 'organized', 'date'],
+  images: ['rating100', 'tags', 'performers', 'studios', 'organized', 'resolution', 'o_counter'],
+  performers: ['rating100', 'gender', 'tags', 'studios'],
   studios: ['rating100', 'tags'],
 };
+
+/** Gender choices, as the web UI names them. */
+const GENDERS = ['Female', 'Male', 'Transgender Female', 'Transgender Male', 'Intersex', 'Non-Binary'];
+
+/** "YYYY-MM-DD" for a Date. */
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Date presets, relative to today. They are stored as fixed dates (that's
+ * what Stash saves), so a saved "Last year" filter keeps its start date.
+ */
+function datePresets() {
+  const now = new Date();
+  const back = (days) => isoDate(new Date(now.getTime() - days * 86400000));
+  return [
+    { label: 'Last 30 days', c: { modifier: 'GREATER_THAN', value: { value: back(30) } } },
+    { label: 'Last year', c: { modifier: 'GREATER_THAN', value: { value: back(365) } } },
+    { label: 'Last 5 years', c: { modifier: 'GREATER_THAN', value: { value: back(5 * 365) } } },
+    { label: 'Older than 5 years', c: { modifier: 'LESS_THAN', value: { value: back(5 * 365) } } },
+  ];
+}
+
+/** "After 1 Mar 2025" for a date criterion that isn't one of today's presets. */
+function describeDate(c) {
+  const v = c.value && typeof c.value === 'object' ? c.value : { value: c.value, value2: c.value2 };
+  if (c.modifier === 'GREATER_THAN') return `After ${formatDate(v.value)}`;
+  if (c.modifier === 'LESS_THAN') return `Before ${formatDate(v.value)}`;
+  if (c.modifier === 'BETWEEN') return `${formatDate(v.value)} to ${formatDate(v.value2)}`;
+  return '';
+}
 
 /** Resolution choices, as the web UI names them. */
 const RESOLUTIONS = ['480p', '720p', '1080p', '1440p', '4k'];
@@ -48,16 +82,28 @@ function itemsOf(c) {
   return (items || []).map((x) => ({ id: String(x.id), name: x.label || x.name || String(x.id) }));
 }
 
+/** Excluded items of a list criterion → [{id, name}]. */
+function excludedOf(c) {
+  const v = c && c.value;
+  const ex = v && !Array.isArray(v) ? v.excluded : c && c.excludes;
+  return (ex || []).map((x) => (typeof x === 'object'
+    ? { id: String(x.id), name: x.label || x.name || String(x.id) }
+    : { id: String(x), name: String(x) }));
+}
+
 /**
- * Builds a list criterion.
- * @param {Array<{id, name}>} list
+ * Builds a list criterion, or null when it has no items at all.
+ * @param {Array<{id, name}>} list      items to match
+ * @param {Array<{id, name}>} excluded  items the results must not have
  * @param {string} modifier  INCLUDES (any) or INCLUDES_ALL
  * @param {number|null} depth  for tags/studios: 0 = exact, -1 = with sub-tags; null = none
- * @param {Object} [prev]    the previous criterion (its exclusions are kept)
  */
-function listCriterion(list, modifier, depth, prev) {
-  const pv = prev && prev.value && !Array.isArray(prev.value) ? prev.value : {};
-  const value = { items: list.map((x) => ({ id: x.id, label: x.name })), excluded: pv.excluded || [] };
+function listCriterion(list, excluded, modifier, depth) {
+  if (!list.length && !excluded.length) return null;
+  const value = {
+    items: list.map((x) => ({ id: x.id, label: x.name })),
+    excluded: excluded.map((x) => ({ id: x.id, label: x.name })),
+  };
   if (depth !== null) value.depth = depth;
   return { modifier, value };
 }
@@ -109,20 +155,29 @@ export function openFilterPanel(opts) {
     panel.render();
   };
 
-  /** A line for a tag/performer/studio list criterion. */
+  /**
+   * A line for a tag/performer/studio list criterion: items to match (all or
+   * any of them), items to exclude, and for tags/studios whether sub-tags or
+   * sub-studios count.
+   */
   const listLine = (key, label, noun, pick, hierarchical, defaultModifier) => {
     const c = criteria[key];
     const list = itemsOf(c);
+    const excluded = excludedOf(c);
     const modifier = (c && c.modifier) || defaultModifier;
     const depth = c && c.value && c.value.depth !== undefined ? c.value.depth : 0;
-    let value = names(list);
+    const subs = noun === 'tag' ? 'sub-tags' : 'sub-studios';
+    let value = list.length ? names(list) : '';
     if (list.length > 1) value += modifier === 'INCLUDES_ALL' ? ' (all)' : ' (any)';
+    if (excluded.length) value += `${value ? ' · ' : ''}not ${names(excluded)}`;
+    /** Applies new lists (keeping the match mode and depth unless given). */
+    const apply = (l, ex, mod, dep) => set(key, listCriterion(l, ex, mod || modifier, hierarchical ? (dep === undefined ? depth : dep) : null));
     return {
       key,
       label,
-      value,
+      value: value || 'Any',
       run: async () => {
-        const extra = [];
+        const extra = [{ label: `Exclude a ${noun}…`, value: 'exclude' }];
         if (list.length > 1) {
           extra.push({
             label: modifier === 'INCLUDES_ALL' ? 'Match: all of them' : 'Match: any of them',
@@ -131,31 +186,74 @@ export function openFilterPanel(opts) {
           });
         }
         if (hierarchical) {
-          extra.push({
-            label: depth === -1 ? `Include sub-${noun === 'tag' ? 'tags' : 'studios'}: yes` : `Include sub-${noun === 'tag' ? 'tags' : 'studios'}: no`,
-            hint: 'Change',
-            value: 'depth',
-          });
+          extra.push({ label: `Include ${subs}: ${depth === -1 ? 'yes' : 'no'}`, hint: 'Change', value: 'depth' });
         }
+        for (const x of excluded) extra.push({ label: `Not ${x.name}`, hint: 'Remove', value: `ex:${x.id}` });
         const res = await editList({
-          title: label, noun, current: list, pick, extra,
+          title: label, noun, current: list, pick: (t) => pick(t, list.concat(excluded)), extra,
         });
         if (!res) return;
-        if (res.action === 'match') {
-          set(key, listCriterion(list, modifier === 'INCLUDES_ALL' ? 'INCLUDES' : 'INCLUDES_ALL', hierarchical ? depth : null, c));
-          return;
+        if (res.list) {
+          apply(res.list, excluded);
+        } else if (res.action === 'exclude') {
+          const picked = await pick(`Exclude a ${noun}`, list.concat(excluded));
+          if (picked) apply(list, excluded.concat([picked]));
+        } else if (res.action === 'match') {
+          apply(list, excluded, modifier === 'INCLUDES_ALL' ? 'INCLUDES' : 'INCLUDES_ALL');
+        } else if (res.action === 'depth') {
+          if (list.length || excluded.length) apply(list, excluded, modifier, depth === -1 ? 0 : -1);
+        } else if (res.action.indexOf('ex:') === 0) {
+          const id = res.action.slice(3);
+          apply(list, excluded.filter((x) => x.id !== id));
         }
-        if (res.action === 'depth') {
-          if (!list.length) return; // nothing to apply it to yet
-          set(key, listCriterion(list, modifier, depth === -1 ? 0 : -1, c));
-          return;
-        }
-        set(key, res.list.length ? listCriterion(res.list, modifier, hierarchical ? depth : null, c) : null);
+      },
+    };
+  };
+
+  /**
+   * A line that picks one of a few preset criteria (e.g. Length: under 5
+   * minutes). A criterion that matches no preset (made in the web UI) is
+   * described by `describe` and can still be replaced or cleared.
+   * @param {string} key
+   * @param {string} label
+   * @param {Array<{label: string, c: Object}>} presets
+   * @param {(c: Object) => string} [describe]
+   */
+  const presetLine = (key, label, presets, describe) => {
+    const c = criteria[key];
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const index = c ? presets.findIndex((p) => same(p.c, c)) : -1;
+    const value = !c ? 'Any' : index >= 0 ? presets[index].label : (describe && describe(c)) || 'Set in Stash';
+    return {
+      key,
+      label,
+      value,
+      run: async () => {
+        const choice = await chooseOption({
+          title: label,
+          options: [{ label: 'Any', value: -1 }].concat(presets.map((p, i) => ({ label: p.label, value: i }))),
+          selected: c ? index : -1,
+        });
+        if (choice === undefined) return;
+        set(key, choice < 0 ? null : presets[choice].c);
       },
     };
   };
 
   const builders = {
+    duration: () => presetLine('duration', 'Length', [
+      { label: 'Under 5 minutes', c: { modifier: 'LESS_THAN', value: { value: 300 } } },
+      { label: '5 to 20 minutes', c: { modifier: 'BETWEEN', value: { value: 300, value2: 1200 } } },
+      { label: '20 to 60 minutes', c: { modifier: 'BETWEEN', value: { value: 1200, value2: 3600 } } },
+      { label: 'Over an hour', c: { modifier: 'GREATER_THAN', value: { value: 3600 } } },
+    ]),
+    date: () => presetLine('date', 'Date', datePresets(), describeDate),
+    o_counter: () => presetLine('o_counter', 'O-count', [
+      { label: 'At least one', c: { modifier: 'GREATER_THAN', value: { value: 0 } } },
+      { label: 'None', c: { modifier: 'EQUALS', value: { value: 0 } } },
+    ]),
+    gender: () => presetLine('gender', 'Gender', GENDERS.map((g) => ({ label: g, c: { modifier: 'INCLUDES', value: [g] } })),
+      (c) => (Array.isArray(c.value) ? c.value.join(', ') : '')),
     rating100: () => {
       const n = minStars(criteria.rating100);
       return {

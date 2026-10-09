@@ -8,9 +8,13 @@
  * - images: title, rating, O-count, organized, studio, performers, tags and
  *   galleries
  * - galleries: title, rating, organized, studio, performers, tags and scenes
- * - groups: rating, studio and tags
- * - performers and studios: rating, favourite and tags
- * - tags: favourite
+ * - groups: rating, studio, tags, the groups they are part of and sub-groups
+ * - performers: rating, favourite and tags
+ * - studios: rating, favourite, parent studio and tags
+ * - tags: favourite, parent tags and sub-tags
+ *
+ * Tags, performers and studios that don't exist yet can be created from the
+ * pickers (name only).
  *
  * Every change is saved immediately (there is no separate Save step) and
  * reported back through `onSaved(patch)` so the calling screen can update.
@@ -21,13 +25,14 @@ import {
   chooseOption, openModal, pickBySearch, promptText, toast,
 } from './overlay.js';
 import { focus, getFocused } from '../nav/focus.js';
+import { pickPerformer, pickStudio, pickTag } from './panel.js';
 import { getSettings } from '../settings.js';
 import * as api from '../api/stash.js';
 import {
   countOf, formatDate, formatDuration, galleryTitle, imageTitle, sceneTitle, stars,
 } from '../util/format.js';
 import {
-  addMarker, askTime, editMarker, markerName,
+  addMarker, askTime, editMarker, markerName, markerTime,
 } from './markerEditor.js';
 
 /** True when editing is allowed (Settings → Editing). */
@@ -45,10 +50,10 @@ const FIELDS = {
   scene: ['title', 'rating', 'o', 'organized', 'studio', 'tags', 'performers', 'groups', 'galleries', 'markers'],
   image: ['title', 'rating', 'o', 'organized', 'studio', 'performers', 'tags', 'galleries'],
   gallery: ['title', 'rating', 'organized', 'studio', 'performers', 'tags', 'scenes'],
-  group: ['rating', 'studio', 'tags'],
+  group: ['rating', 'studio', 'tags', 'containing', 'subgroups'],
   performer: ['rating', 'favorite', 'tags'],
-  studio: ['rating', 'favorite', 'tags'],
-  tag: ['favorite'],
+  studio: ['rating', 'favorite', 'parent', 'tags'],
+  tag: ['favorite', 'parents', 'children'],
 };
 
 /** Display name of an item for the panel title. */
@@ -149,8 +154,20 @@ export function openEditor(kind, item, onSaved, onClose) {
       value: () => (item.favorite ? 'Yes' : 'No'),
       run: () => save({ favorite: !item.favorite }, item.favorite ? 'Removed from favourites' : 'Added to favourites'),
     },
-    tags: listAction('Tags', 'tag', 'tags', 'tag_ids', api.findTags),
-    performers: listAction('Performers', 'performer', 'performers', 'performer_ids', api.findPerformers),
+    // Tags and performers can also be created from the picker.
+    tags: listAction('Tags', 'tag', 'tags', 'tag_ids', null, {
+      pick: (title, cur) => pickTag(title, cur, { create: true }),
+    }),
+    performers: listAction('Performers', 'performer', 'performers', 'performer_ids', null, {
+      pick: (title, cur) => pickPerformer(title, cur, { create: true }),
+    }),
+    // Tag hierarchy (a tag can't be its own parent or child).
+    parents: listAction('Parent tags', 'parent tag', 'parents', 'parent_ids', null, {
+      pick: (title, cur) => pickTag(title, cur.concat([item]), { create: true }),
+    }),
+    children: listAction('Sub-tags', 'sub-tag', 'children', 'child_ids', null, {
+      pick: (title, cur) => pickTag(title, cur.concat([item]), { create: true }),
+    }),
     galleries: listAction('Galleries', 'gallery', 'galleries', 'gallery_ids', api.findGalleries, {
       labelOf: galleryTitle,
       sort: 'title',
@@ -175,7 +192,7 @@ export function openEditor(kind, item, onSaved, onClose) {
         const choice = await chooseOption({
           title: 'Markers',
           options: [{ label: 'Add a marker…', value: '__add' }].concat(list.map((m) => ({
-            label: markerName(m), hint: formatDuration(m.seconds), value: m.id,
+            label: markerName(m), hint: markerTime(m), value: m.id,
           }))),
         });
         if (choice === undefined) return;
@@ -198,39 +215,10 @@ export function openEditor(kind, item, onSaved, onClose) {
         if (onSaved) onSaved({ scene_markers: item.scene_markers });
       },
     },
-    studio: {
-      label: 'Studio',
-      value: () => (item.studio ? item.studio.name : 'None'),
-      run: async () => {
-        const choice = item.studio
-          ? await chooseOption({
-            title: 'Studio',
-            options: [{ label: 'Choose another studio…', value: 'pick' }, { label: `Remove ${item.studio.name}`, value: 'remove' }],
-          })
-          : 'pick';
-        if (!choice) return;
-        if (choice === 'remove') {
-          const name = item.studio.name;
-          if (await save({ studio_id: null }, `Removed ${name}`)) {
-            item.studio = null;
-            delete item.studio_id;
-            render();
-          }
-          return;
-        }
-        const picked = await pickBySearch({
-          title: 'Choose a studio',
-          search: (text) => api.findStudios({ q: text, perPage: 20, sort: 'scenes_count', direction: 'DESC' })
-            .then((r) => r.items.map((x) => ({ label: x.name, hint: `${x.scene_count} scenes`, value: x }))),
-        });
-        if (!picked) return;
-        if (await save({ studio_id: picked.id }, `Studio: ${picked.name}`)) {
-          item.studio = { id: picked.id, name: picked.name, image_path: picked.image_path };
-          delete item.studio_id;
-          render();
-        }
-      },
-    },
+    studio: studioAction('Studio', 'studio', 'studio_id'),
+    parent: studioAction('Parent studio', 'parent_studio', 'parent_id'),
+    containing: groupLinks('Part of', 'containing_groups', 'Add to a parent group…'),
+    subgroups: groupLinks('Sub-groups', 'sub_groups', 'Add a sub-group…'),
     groups: {
       label: 'Groups',
       value: () => String((item.groups || []).length),
@@ -284,12 +272,108 @@ export function openEditor(kind, item, onSaved, onClose) {
   };
 
   /**
+   * Choose/remove action for a single studio field: a scene's (or gallery's,
+   * image's, group's) studio, or a studio's parent studio. A new studio can
+   * be created from the picker.
+   * @param {string} label
+   * @param {string} field    item field holding {id, name} or null
+   * @param {string} idField  update input field (studio_id / parent_id)
+   */
+  function studioAction(label, field, idField) {
+    return {
+      label,
+      value: () => (item[field] ? item[field].name : 'None'),
+      run: async () => {
+        const cur = item[field];
+        const choice = cur
+          ? await chooseOption({
+            title: label,
+            options: [{ label: 'Choose another studio…', value: 'pick' }, { label: `Remove ${cur.name}`, value: 'remove' }],
+          })
+          : 'pick';
+        if (!choice) return;
+        if (choice === 'remove') {
+          if (await save({ [idField]: null }, `Removed ${cur.name}`)) {
+            item[field] = null;
+            delete item[idField];
+            render();
+          }
+          return;
+        }
+        // A studio can't be its own parent.
+        const exclude = (cur ? [cur] : []).concat(kind === 'studio' ? [item] : []);
+        const picked = await pickStudio(`Choose ${label.toLowerCase()}`, exclude, { create: true });
+        if (!picked) return;
+        if (await save({ [idField]: picked.id }, `${label}: ${picked.name}`)) {
+          item[field] = { id: picked.id, name: picked.name };
+          delete item[idField];
+          render();
+        }
+      },
+    };
+  }
+
+  /**
+   * Add/remove action for a group's place in the group hierarchy: the groups
+   * it is part of (`containing_groups`) or its sub-groups (`sub_groups`).
+   * Both are lists of {group, description}; descriptions are kept as they are.
+   * @param {string} label
+   * @param {string} field     'containing_groups' or 'sub_groups' (also the input field)
+   * @param {string} addLabel
+   */
+  function groupLinks(label, field, addLabel) {
+    return {
+      label,
+      value: () => String((item[field] || []).length),
+      run: async () => {
+        const current = item[field] || [];
+        const choice = await chooseOption({
+          title: label,
+          options: [{ label: addLabel, value: '__add' }].concat(current.map((x) => ({
+            label: x.group.name, hint: 'Remove', value: x.group.id,
+          }))),
+        });
+        if (choice === undefined) return;
+        let next;
+        let message;
+        if (choice === '__add') {
+          const picked = await pickBySearch({
+            title: addLabel.replace(/…$/, ''),
+            search: (text) => api.findGroups({ q: text, perPage: 20, sort: 'name', direction: 'ASC' })
+              .then((r) => r.items.filter((x) => x.id !== item.id && !current.some((c) => c.group.id === x.id))
+                .map((x) => ({ label: x.name, hint: countOf(x.scene_count, 'scene'), value: x }))),
+          });
+          if (!picked) return;
+          next = current.concat([{ group: picked, description: null }]);
+          message = `Added ${picked.name}`;
+        } else {
+          const removed = current.find((x) => x.group.id === choice);
+          next = current.filter((x) => x.group.id !== choice);
+          message = `Removed ${removed ? removed.group.name : 'group'}`;
+        }
+        const input = next.map((x) => {
+          const g = { group_id: x.group.id };
+          if (x.description) g.description = x.description;
+          return g;
+        });
+        if (await save({ [field]: input }, message)) {
+          item[field] = next;
+          render();
+          if (onSaved) onSaved({ [field]: next });
+        }
+      },
+    };
+  }
+
+  /**
    * Add/remove action for a list field (tags, performers).
    * @param {string} label
    * @param {string} noun
    * @param {string} field     item field holding [{id, name}]
    * @param {string} idsField  update input field (e.g. tag_ids)
-   * @param {Function} finder  api.findTags / api.findPerformers
+   * @param {Function|null} finder  api.findGalleries… (not needed with opts.pick)
+   * @param {Object} [opts]  labelOf, sort, direction, hintOf, keep; or
+   *   pick(title, current) → Promise<{id, name}> to use another picker
    */
   function listAction(label, noun, field, idsField, finder, opts) {
     const o = Object.assign({
@@ -314,7 +398,7 @@ export function openEditor(kind, item, onSaved, onClose) {
         let next;
         let message;
         if (choice === '__add') {
-          const picked = await pickBySearch({
+          const picked = o.pick ? await o.pick(`Add a ${noun}`, current) : await pickBySearch({
             title: `Add a ${noun}`,
             search: (text) => finder({
               q: text, perPage: 20, sort: o.sort, direction: o.direction,

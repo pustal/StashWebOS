@@ -246,10 +246,31 @@ export async function getTag(id) {
       id name description aliases image_path favorite
       scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
       scene_marker_count(depth: -1)
-      children { id }
+      parents { id name }
+      children { id name }
     }
   }`, { id });
   return data.findTag;
+}
+
+/** Create mutation per kind, for {@link createNamed}. */
+const CREATES = {
+  tag: ['tagCreate', 'TagCreateInput'],
+  performer: ['performerCreate', 'PerformerCreateInput'],
+  studio: ['studioCreate', 'StudioCreateInput'],
+};
+
+/**
+ * Creates a tag, performer or studio with just a name (the rest can be
+ * filled in later in Stash's web UI).
+ * @param {'tag'|'performer'|'studio'} kind
+ * @param {string} name
+ * @returns {Promise<{id: string, name: string}>}
+ */
+export async function createNamed(kind, name) {
+  const [mutation, type] = CREATES[kind];
+  const data = await q(`mutation ($i: ${type}!) { ${mutation}(input: $i) { id name } }`, { i: { name } });
+  return data[mutation];
 }
 
 /** Sets or clears a performer's favourite flag. */
@@ -414,8 +435,8 @@ export async function getGroup(id) {
         scene_count
         studio { id name }
         tags { id name }
-        containing_groups { group { id name } }
-        sub_groups { group { ...GroupCard } }
+        containing_groups { group { id name } description }
+        sub_groups { group { ...GroupCard } description }
       }
     }`, { id });
   return data.findGroup;

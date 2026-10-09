@@ -88,10 +88,14 @@ export class EntityScreen extends Screen {
     if (this.kind === 'performer' && e.birthdate) facts.push(`Born ${formatDate(e.birthdate)}`);
     if (e.rating100) facts.push(`${stars(e.rating100)} ★`);
     if (this.kind !== 'performer' && e.favorite) facts.push('Favourite');
-    // Tags of a performer or studio (tags have none of their own here).
-    const tags = this.kind !== 'tag' && e.tags && e.tags.length
-      ? `Tags: ${e.tags.slice(0, 6).map((t) => t.name).join(', ')}${e.tags.length > 6 ? ` +${e.tags.length - 6}` : ''}`
-      : '';
+    // Short name lists: a performer's or studio's tags, a tag's parents and
+    // sub-tags. ("Tags: A, B, C +2")
+    const listLine = (label, list) => (list && list.length
+      ? `${label}: ${list.slice(0, 6).map((t) => t.name).join(', ')}${list.length > 6 ? ` +${list.length - 6}` : ''}`
+      : '');
+    const lines = this.kind === 'tag'
+      ? [listLine('Part of', e.parents), listLine('Sub-tags', e.children)]
+      : [listLine('Tags', e.tags)];
 
     const actions = [];
     if (this.kind === 'performer' && e.favorite !== undefined) {
@@ -114,7 +118,7 @@ export class EntityScreen extends Screen {
     this.header.appendChild(h('div', { class: 'entity-copy' }, [
       h('h1', { class: 'detail-title' }, e.name || ''),
       facts.length ? h('div', { class: 'detail-facts' }, facts.map((f) => h('span', null, f))) : null,
-      tags ? h('div', { class: 'detail-facts' }, h('span', null, tags)) : null,
+      lines.some(Boolean) ? h('div', { class: 'detail-facts' }, lines.filter(Boolean).map((l) => h('span', null, l))) : null,
       text ? h('p', { class: 'detail-text' }, text) : null,
       actions.length ? h('div', { class: 'detail-actions nav-group' }, actions) : null,
     ]));

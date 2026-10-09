@@ -33,7 +33,9 @@ import * as api from '../api/stash.js';
 import { allSources, buildSources, withStart } from '../player/sources.js';
 import { SeekPreview } from '../player/seekPreview.js';
 import { canEdit } from '../ui/editor.js';
-import { addMarker, editMarker, markerName } from '../ui/markerEditor.js';
+import {
+  addMarker, editMarker, markerName, markerTime,
+} from '../ui/markerEditor.js';
 
 const HIDE_CONTROLS_MS = 5000;
 const SEEK_COMMIT_MS = 700;
@@ -372,7 +374,7 @@ export class PlayerScreen extends Screen {
   async pickMarker() {
     const now = Math.floor(this.position());
     const editing = canEdit();
-    const options = this.markers.map((m) => ({ label: this.markerLabel(m), hint: formatDuration(m.seconds), value: m.id }));
+    const options = this.markers.map((m) => ({ label: this.markerLabel(m), hint: markerTime(m), value: m.id }));
     if (editing) {
       options.unshift({ label: `Add a marker at ${formatDuration(now)}…`, value: '__add' });
       if (this.markers.length) options.push({ label: 'Edit a marker…', value: '__edit' });
@@ -387,7 +389,7 @@ export class PlayerScreen extends Screen {
     if (value === '__edit') {
       const id = await chooseOption({
         title: 'Edit a marker',
-        options: this.markers.map((m) => ({ label: this.markerLabel(m), hint: formatDuration(m.seconds), value: m.id })),
+        options: this.markers.map((m) => ({ label: this.markerLabel(m), hint: markerTime(m), value: m.id })),
       });
       const m = this.markers.find((x) => x.id === id);
       if (!m) return;
@@ -605,7 +607,10 @@ export class PlayerScreen extends Screen {
     const d = this.totalDuration();
     if (!d) return;
     for (const m of this.markers) {
-      this.ticks.appendChild(h('span', { class: 'tick', style: { left: `${(m.seconds / d) * 100}%` } }));
+      // A marker with an end time is drawn as a band over the stretch it covers.
+      const style = { left: `${(m.seconds / d) * 100}%` };
+      if (m.end_seconds > m.seconds) style.width = `${((Math.min(m.end_seconds, d) - m.seconds) / d) * 100}%`;
+      this.ticks.appendChild(h('span', { class: 'tick' + (style.width ? ' range' : ''), style }));
     }
   }
 

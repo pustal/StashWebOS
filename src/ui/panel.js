@@ -4,12 +4,14 @@
  *
  * - {@link openLinesPanel}: a side panel of "label … value" lines that is
  *   redrawn after each change, keeping the highlight on the same line.
- * - {@link pickTag}, {@link pickPerformer}, {@link pickStudio}: search-as-you-
- *   type pickers for one item.
+ * - {@link pickNamed} (and pickTag, pickPerformer, pickStudio): search-as-
+ *   you-type pickers for one item, optionally offering to create it.
  * - {@link editList}: the add/remove menu for a list of tags, performers…
  */
 import { h } from '../util/dom.js';
-import { chooseOption, openModal, pickBySearch } from './overlay.js';
+import {
+  chooseOption, openModal, pickBySearch, toast,
+} from './overlay.js';
 import { focus, getFocused } from '../nav/focus.js';
 import * as api from '../api/stash.js';
 import { countOf } from '../util/format.js';
@@ -76,38 +78,56 @@ export function openLinesPanel(opts) {
   };
 }
 
-/** Search-as-you-type picker for one tag. Resolves with {id, name} or undefined. */
-export function pickTag(title, exclude) {
-  return pickBySearch({
+/** How each kind is searched, for {@link pickNamed}. */
+const FINDERS = {
+  tag: (o) => api.findTags(o),
+  performer: (o) => api.findPerformers(o),
+  studio: (o) => api.findStudios(o),
+};
+
+/**
+ * Search-as-you-type picker for one tag, performer or studio.
+ *
+ * With `create`, a "Create …" line is offered when nothing found has exactly
+ * the typed name; choosing it creates the item in Stash (name only).
+ * @param {'tag'|'performer'|'studio'} kind
+ * @param {string} title
+ * @param {Array<{id: string}>} [exclude]  items not to offer (already chosen)
+ * @param {{create?: boolean}} [opts]
+ * @returns {Promise<{id: string, name: string}|undefined>}
+ */
+export async function pickNamed(kind, title, exclude, opts) {
+  const create = !!(opts && opts.create);
+  const picked = await pickBySearch({
     title,
-    search: (text) => api.findTags({
+    search: (text) => FINDERS[kind]({
       q: text, perPage: 20, sort: 'scenes_count', direction: 'DESC',
-    }).then((r) => r.items.filter((x) => !(exclude || []).some((e) => e.id === x.id))
-      .map((x) => ({ label: x.name, hint: countOf(x.scene_count, 'scene'), value: { id: x.id, name: x.name } }))),
+    }).then((r) => {
+      const out = r.items.filter((x) => !(exclude || []).some((e) => e.id === x.id))
+        .map((x) => ({ label: x.name, hint: countOf(x.scene_count, 'scene'), value: { id: x.id, name: x.name } }));
+      const name = text.trim();
+      const exact = r.items.some((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (create && name && !exact) out.push({ label: `Create ${kind} “${name}”`, hint: 'New', value: { create: name } });
+      return out;
+    }),
   });
+  if (!picked || !picked.create) return picked;
+  try {
+    const made = await api.createNamed(kind, picked.create);
+    toast(`Created ${kind} “${made.name}”`);
+    return { id: made.id, name: made.name };
+  } catch (err) {
+    toast(`Couldn't create “${picked.create}”: ${err.message}`, 'error');
+    return undefined;
+  }
 }
 
-/** Search-as-you-type picker for one performer. */
-export function pickPerformer(title, exclude) {
-  return pickBySearch({
-    title,
-    search: (text) => api.findPerformers({
-      q: text, perPage: 20, sort: 'scenes_count', direction: 'DESC',
-    }).then((r) => r.items.filter((x) => !(exclude || []).some((e) => e.id === x.id))
-      .map((x) => ({ label: x.name, hint: countOf(x.scene_count, 'scene'), value: { id: x.id, name: x.name } }))),
-  });
-}
-
-/** Search-as-you-type picker for one studio. */
-export function pickStudio(title, exclude) {
-  return pickBySearch({
-    title,
-    search: (text) => api.findStudios({
-      q: text, perPage: 20, sort: 'scenes_count', direction: 'DESC',
-    }).then((r) => r.items.filter((x) => !(exclude || []).some((e) => e.id === x.id))
-      .map((x) => ({ label: x.name, hint: countOf(x.scene_count, 'scene'), value: { id: x.id, name: x.name } }))),
-  });
-}
+/** Picker for one tag (see {@link pickNamed}). */
+export const pickTag = (title, exclude, opts) => pickNamed('tag', title, exclude, opts);
+/** Picker for one performer (see {@link pickNamed}). */
+export const pickPerformer = (title, exclude, opts) => pickNamed('performer', title, exclude, opts);
+/** Picker for one studio (see {@link pickNamed}). */
+export const pickStudio = (title, exclude, opts) => pickNamed('studio', title, exclude, opts);
 
 /**
  * Add/remove menu for a list of {id, name} items.
@@ -115,7 +135,8 @@ export function pickStudio(title, exclude) {
  * @param {string} opts.title       menu title, e.g. "Tags"
  * @param {string} opts.noun        "tag" → "Add a tag…"
  * @param {Array<{id: string, name: string}>} opts.current
- * @param {(title: string, exclude: Array) => Promise<Object>} opts.pick  e.g. pickTag
+ * @param {(title: string, exclude: Array, o: Object) => Promise<Object>} opts.pick  e.g. pickTag
+ * @param {boolean} [opts.create]   offer to create a new item while adding
  * @param {Array<{label: string, value: string, hint?: string}>} [opts.extra]
  *   more options after "Add" (their value is returned as `{action: value}`)
  * @returns {Promise<{list: Array, message: string}|{action: string}|undefined>}
@@ -131,7 +152,7 @@ export async function editList(opts) {
   });
   if (choice === undefined) return undefined;
   if (choice === '__add') {
-    const picked = await opts.pick(`Add a ${opts.noun}`, current);
+    const picked = await opts.pick(`Add a ${opts.noun}`, current, { create: !!opts.create });
     if (!picked) return undefined;
     return { list: current.concat([picked]), message: `Added ${picked.name}` };
   }

@@ -7,7 +7,7 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
 ## Features
 
 - **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted. Or, under Settings → Home screen, use the front page you set up in Stash itself (its saved-filter and "recently added/released" rows).
-- **Browse**: Scenes, Groups, Markers, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), quick toggles (Unwatched, In progress, Favourites, names-only tags), a **Filter** panel (rating, tags, performers, studios, organized, resolution, depending on the section) and your **saved filters** from Stash, which you can also create, update, rename and delete from the TV.
+- **Browse**: Scenes, Groups, Markers, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), quick toggles (Unwatched, In progress, Favourites, names-only tags), a **Filter** panel (rating, tags, performers and studios with match all/any and exclusions, organized, resolution, length, date, O-count and gender, depending on the section) and your **saved filters** from Stash, which you can also create, update, rename and delete from the TV.
 - **Markers**: browse every scene marker on its own, by date, title, scene, time or duration. Choosing one plays its scene from that point. Tag pages have a Markers tab too. With editing on, markers can be added, changed and deleted (see Editing and Player).
 - **Scene page**: Resume / Play from start, details, tech info, performers, studio, groups, galleries, tags and markers. Choosing a marker starts playback at that point.
 - **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups, plus markers on tag pages (empty tabs are hidden). Animated tag images (GIF, WebP, APNG) can stay animated: see Settings → Animated thumbnails. You can mark a performer as a favourite from their page.
@@ -18,15 +18,17 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - ratings (half stars), favourites, O-count and Organized
   - titles of scenes, images and galleries
   - a scene's tags, performers, studio, galleries and groups (search-as-you-type picker; for a group you also set the scene's number in it)
-  - a scene's markers: add one at a typed time, change its title, tag, extra tags or time, or delete it
+  - a scene's markers: add one at a typed time, change its title, tag, extra tags, time or end time, or delete it
   - links of galleries (studio, performers, tags, scenes), images (studio, performers, tags, galleries) and groups (studio, tags), and the tags of performers and studios
+  - hierarchies: a tag's parent tags and sub-tags, a studio's parent studio, and the groups a group is part of and its sub-groups
+  - new tags, performers and studios: when a search finds nothing with that exact name, the picker offers to create it (name only; fill in the rest in Stash's web UI)
 
   Settings → Editing → Off hides every Edit button, for a view-only TV.
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
   - Seek thumbnails come from Stash's sprite sheets.
-  - Markers appear on the timeline and in a list, and Channel Up/Down jump between them. With editing on, the Markers menu also adds a marker at the current time and edits markers, including moving one to the current time.
+  - Markers appear on the timeline and in a list, and Channel Up/Down jump between them. With editing on, the Markers menu also adds a marker at the current time and edits markers, including moving one, or its end, to the current time. Markers with an end time show as a band on the timeline.
   - Subtitles, and a manual Source picker.
   - Saves your resume position and play count back to Stash.
 - **Magic Remote**: point and click works alongside the D-pad.
@@ -173,7 +175,6 @@ Stash saves filters in its web UI's format, not the format its API accepts. [`sr
 
 ## Not included yet
 
-- Creating new tags, performers or studios (the pickers find existing ones)
-- Excluding items in the Filter panel ("not tagged …") and editing criteria other than the ones listed above
-- Marker end times
-- Editing tag hierarchies (parent/child tags) and group hierarchies (sub-groups)
+- Editing longer text and other details (descriptions, dates, URLs, aliases, images); use Stash's web UI
+- Filter criteria beyond those in the Filter panel (criteria made in the web UI are kept, and can be removed)
+- Library tasks (scan, generate, identify, scrapers)

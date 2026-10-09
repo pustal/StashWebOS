@@ -2,13 +2,16 @@
  * Creating, changing and deleting scene markers from the TV.
  *
  * A Stash marker needs a time and a primary tag; the title is optional (Stash
- * shows the tag's name when it is empty) and it can carry more tags.
+ * shows the tag's name when it is empty), and it can carry more tags and an
+ * end time (a marker can cover a stretch of the scene rather than a moment).
  *
  * Used from the player (add a marker at the current time, edit one, move it
  * to the current time) and from the scene editor (add a marker at a typed
  * time, edit one).
  */
-import { confirmDialog, promptText, toast } from './overlay.js';
+import {
+  chooseOption, confirmDialog, promptText, toast,
+} from './overlay.js';
 import {
   editList, openLinesPanel, pickTag,
 } from './panel.js';
@@ -18,6 +21,11 @@ import { formatDuration, parseDuration } from '../util/format.js';
 /** What a marker is called in menus: its title, else its tag. */
 export function markerName(m) {
   return m.title || (m.primary_tag && m.primary_tag.name) || 'Marker';
+}
+
+/** "0:05" or, for a marker with an end time, "0:05–0:12". */
+export function markerTime(m) {
+  return m.end_seconds ? `${formatDuration(m.seconds)}–${formatDuration(m.end_seconds)}` : formatDuration(m.seconds);
 }
 
 /**
@@ -46,7 +54,7 @@ export async function askTime(title, initial, max) {
  * @returns {Promise<Object|null>} the new marker, or null when cancelled/failed
  */
 export async function addMarker(sceneId, seconds) {
-  const tag = await pickTag(`Tag for the marker at ${formatDuration(seconds)}`);
+  const tag = await pickTag(`Tag for the marker at ${formatDuration(seconds)}`, [], { create: true });
   if (!tag) return null;
   const title = await promptText({
     title: 'Marker title', placeholder: `Optional (shows “${tag.name}” when empty)`, confirm: 'Add marker',
@@ -95,7 +103,7 @@ export function editMarker(marker, opts) {
       panel.render();
     };
 
-    const subtitle = () => `${markerName(marker)} · ${formatDuration(marker.seconds)}`;
+    const subtitle = () => `${markerName(marker)} · ${markerTime(marker)}`;
 
     const lines = () => {
       const out = [
@@ -114,7 +122,7 @@ export function editMarker(marker, opts) {
           label: 'Tag',
           value: marker.primary_tag ? marker.primary_tag.name : '—',
           run: async () => {
-            const tag = await pickTag('Marker tag');
+            const tag = await pickTag('Marker tag', [], { create: true });
             if (!tag) return;
             await save({ primary_tag_id: tag.id }, `Tag: ${tag.name}`);
           },
@@ -125,7 +133,7 @@ export function editMarker(marker, opts) {
           value: String((marker.tags || []).length),
           run: async () => {
             const res = await editList({
-              title: 'More tags', noun: 'tag', current: marker.tags || [], pick: pickTag,
+              title: 'More tags', noun: 'tag', current: marker.tags || [], pick: pickTag, create: true,
             });
             if (!res || !res.list) return;
             await save({ tag_ids: res.list.map((t) => t.id) }, res.message);
@@ -138,7 +146,36 @@ export function editMarker(marker, opts) {
           run: async () => {
             const sec = await askTime('Marker time', marker.seconds, o.duration);
             if (sec === undefined || sec === marker.seconds) return;
+            if (marker.end_seconds && sec >= marker.end_seconds) {
+              toast(`The start must be before the end (${formatDuration(marker.end_seconds)}).`, 'error');
+              return;
+            }
             await save({ seconds: sec }, `Moved to ${formatDuration(sec)}`);
+          },
+        },
+        {
+          key: 'end',
+          label: 'End time',
+          value: marker.end_seconds ? formatDuration(marker.end_seconds) : 'None',
+          run: async () => {
+            const options = [{ label: 'Type an end time…', value: 'type' }];
+            if (o.now) options.push({ label: `End at the current time (${formatDuration(o.now())})`, value: 'now' });
+            if (marker.end_seconds) options.push({ label: 'Remove the end time', value: 'remove' });
+            const choice = await chooseOption({ title: 'End time', options });
+            if (!choice) return;
+            if (choice === 'remove') {
+              await save({ end_seconds: null }, 'End time removed');
+              return;
+            }
+            const end = choice === 'now'
+              ? Math.floor(o.now())
+              : await askTime('Marker end time', marker.end_seconds || marker.seconds + 10, o.duration);
+            if (end === undefined) return;
+            if (end <= marker.seconds) {
+              toast(`The end must be after the start (${formatDuration(marker.seconds)}).`, 'error');
+              return;
+            }
+            await save({ end_seconds: end }, `Ends at ${formatDuration(end)}`);
           },
         },
       ];
@@ -148,7 +185,14 @@ export function editMarker(marker, opts) {
           key: 'now',
           label: 'Move to the current time',
           value: formatDuration(now),
-          run: () => save({ seconds: Math.floor(o.now()) }, `Moved to ${formatDuration(o.now())}`),
+          run: () => {
+            const t = Math.floor(o.now());
+            if (marker.end_seconds && t >= marker.end_seconds) {
+              toast(`That is after the marker's end (${formatDuration(marker.end_seconds)}).`, 'error');
+              return undefined;
+            }
+            return save({ seconds: t }, `Moved to ${formatDuration(t)}`);
+          },
         });
       }
       out.push({
