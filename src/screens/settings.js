@@ -1,6 +1,7 @@
 /**
  * Settings: image cache (with live usage), playback, server, library,
- * library tasks and Stash server settings (with editing on) and about.
+ * library tasks and Stash server settings (with editing on) and about
+ * (with links to the project and to Ko-fi).
  */
 import { Screen } from '../ui/router.js';
 import { h } from '../util/dom.js';
@@ -18,9 +19,15 @@ import {
   TASKS, jobQueue, startTask, stopAllJobs,
 } from '../api/tasks.js';
 import { openScrapers, openStashBoxes, openTaskOptions } from '../ui/libraryPanels.js';
-import { serverSettingsLines } from '../ui/serverSettings.js';
+import { checkStashUpdate, serverSettingsLines } from '../ui/serverSettings.js';
+import { showLink } from '../ui/linkDialog.js';
 
 /* global __APP_VERSION__ */
+
+/** The project's home page. */
+const PROJECT_URL = 'https://github.com/pustal/StashWebOS';
+/** Where to support the project. */
+const KOFI_URL = 'https://ko-fi.com/pustal';
 
 export class SettingsScreen extends Screen {
   /** @param {{onDisconnect: () => void}} opts */
@@ -241,6 +248,18 @@ export class SettingsScreen extends Screen {
       ].concat(this.taskLines(), [
         h('h2', { class: 'settings-heading' }, 'About'),
         h('p', { class: 'about-text' }, `Stash for webOS ${__APP_VERSION__}. An unofficial client for Stash.`),
+        this.line('Check for Stash updates', () => '', () => checkStashUpdate(), 'Asks the server whether a newer Stash is out.'),
+        // Links open a QR code (and, on the TV, the browser): see ui/linkDialog.js.
+        this.line('Source code on GitHub', () => 'github.com/pustal/StashWebOS', () => showLink({
+          title: 'Stash for webOS on GitHub',
+          text: 'Source code, releases and issues.',
+          url: PROJECT_URL,
+        })),
+        this.line('Please consider buying me a Ko-fi', () => 'ko-fi.com/pustal', () => showLink({
+          title: 'Buy me a Ko-fi',
+          text: 'If you enjoy this app, a Ko-fi helps keep it going. Thank you!',
+          url: KOFI_URL,
+        })),
       ])),
     ]));
     this.refreshUsage();

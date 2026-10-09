@@ -4,6 +4,8 @@ An unofficial [Stash](https://github.com/stashapp/stash) client for LG webOS TVs
 
 It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/damontecres/StashAppAndroidTV) and [Sinema](https://github.com/visorcraft/Sinema), and was tested against Stash v0.31. It needs Stash v0.27 or newer, the version that renamed movies to groups.
 
+If you enjoy it, please consider [buying me a Ko-fi](https://ko-fi.com/pustal).
+
 ## Features
 
 - **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted. Or, under Settings → Home screen, use the front page you set up in Stash itself (its saved-filter and "recently added/released" rows).
@@ -34,7 +36,6 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - plugins: turn on or off, change their settings, run their tasks, install or update plugin packages
   - security: set, change or remove the username and password (the TV signs in again by itself), make a new API key
   - more server settings: paths and files (folders can be browsed), previews and sprites, the web interface's options, DLNA (settings, start/stop now), scraping, log settings and a log viewer, database backup and optimise, session length. These panels are built from Stash's schema, so options added in newer Stash versions show up too; grouped options (such as the web UI's image lightbox) open a panel of their own.
-  - check whether a newer Stash is out
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
@@ -44,6 +45,7 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - With editing on, **Set cover** makes the frame on screen the scene's cover.
   - Saves your resume position and play count back to Stash.
 - **Magic Remote**: point and click works alongside the D-pad.
+- **About** (Settings): the app version, a check for Stash updates (always shown, even with editing off), and links to the project on GitHub and to Ko-fi as QR codes.
 - **New or upgraded Stash servers**: connecting to a Stash that hasn't been set up yet opens a setup panel on the TV (settings file, library folders browsed on the server, database, generated files, cache, covers), then offers a first scan. A database from an older Stash version can be upgraded from the TV too (with a backup first).
 
 ## Storage and the image cache
@@ -108,7 +110,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_0.10.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_1.0.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -171,7 +173,7 @@ src/
   nav/focus.js        spatial navigation for the D-pad and Magic Remote
   player/sources.js   choosing direct play vs transcode and fallbacks
   player/seekPreview.js  sprite-sheet seek thumbnails
-  ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs,
+  ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs, link dialog (QR codes),
                       edit panel (editor.js), marker editor, filter panel, scraper, bulk actions,
                       library setup and Stash server settings panels, schema-built settings (configPanel.js),
                       first-time setup and database upgrade of a Stash server (serverLifecycle.js)
@@ -195,3 +197,9 @@ Stash saves filters in its web UI's format, not the format its API accepts. [`sr
 Everything from earlier lists is now in the app. One thing is out of reach:
 
 - Restarting, shutting down or updating Stash itself: Stash's API has no way to do that, so it's done on the server (the app can tell you when a newer version is out)
+
+## Support
+
+Stash for webOS is free and open source ([github.com/pustal/StashWebOS](https://github.com/pustal/StashWebOS)). If it's useful to you, please consider [buying me a Ko-fi](https://ko-fi.com/pustal). Thank you!
+
+Both links are also in the app, under Settings → About, as QR codes you can scan with your phone.

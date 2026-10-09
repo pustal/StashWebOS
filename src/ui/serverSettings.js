@@ -566,6 +566,23 @@ function openMoreSettings(onJob) {
 }
 
 /**
+ * Asks the server whether a newer Stash is out and says so in a toast.
+ * Read-only, so it's offered in About even when editing is off.
+ */
+export async function checkStashUpdate() {
+  try {
+    toast('Checking…');
+    const v = await getLatestVersion();
+    const latest = v.latest && v.latest.version;
+    if (!latest) toast(`Stash ${v.current}. The server couldn't find out the latest version.`);
+    else if (latest === v.current) toast(`Stash ${v.current} is the latest version.`);
+    else toast(`Stash ${latest} is out (this server runs ${v.current}). Update it on the server.`);
+  } catch (err) {
+    toast(`The server couldn't check: ${err.message}`, 'error');
+  }
+}
+
+/**
  * Settings lines for the Stash server section.
  * @param {(label: string, note: string, run: () => void) => HTMLElement} line  makes a settings line
  * @param {() => void} onJob  shows task progress after starting a job
@@ -577,17 +594,5 @@ export function serverSettingsLines(line, onJob) {
     line('Plugins', 'Turn plugins on or off, change their settings, run their tasks.', () => openPlugins(onJob)),
     line('Security', 'Username and password, API key.', () => openSecurity()),
     line('More server settings', 'Paths, previews, web interface, DLNA, scraping, logs, database.', () => openMoreSettings(onJob)),
-    line('Check for Stash updates', 'Asks the server whether a newer Stash is out.', async () => {
-      try {
-        toast('Checking…');
-        const v = await getLatestVersion();
-        const latest = v.latest && v.latest.version;
-        if (!latest) toast(`Stash ${v.current}. The server couldn't find out the latest version.`);
-        else if (latest === v.current) toast(`Stash ${v.current} is the latest version.`);
-        else toast(`Stash ${latest} is out (this server runs ${v.current}). Update it on the server.`);
-      } catch (err) {
-        toast(`The server couldn't check: ${err.message}`, 'error');
-      }
-    }),
   ];
 }
