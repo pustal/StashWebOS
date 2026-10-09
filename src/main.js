@@ -61,10 +61,13 @@ registerNavigation(router, {
   gallery: (item) => new GalleryScreen(item),
   group: (item) => new GroupScreen(item),
   image: (item, extra) => new ViewerScreen(item, extra),
+  // A marker plays its scene from the marker's time.
+  marker: (m) => new PlayerScreen(m.scene, { start: m.seconds }),
   'section:home': () => new HomeScreen(),
   'section:search': () => new SearchScreen(),
   'section:scenes': () => new BrowseScreen('scenes'),
   'section:groups': () => new BrowseScreen('groups'),
+  'section:markers': () => new BrowseScreen('markers'),
   'section:galleries': () => new BrowseScreen('galleries'),
   'section:images': () => new BrowseScreen('images'),
   'section:performers': () => new BrowseScreen('performers'),

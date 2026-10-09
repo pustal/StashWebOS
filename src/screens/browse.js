@@ -9,8 +9,13 @@
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
 import { Grid } from '../ui/grid.js';
-import { chooseOption, toast } from '../ui/overlay.js';
-import { SECTION_MODES, findSavedFilters, resolveSavedFilter } from '../api/savedFilters.js';
+import {
+  chooseOption, confirmDialog, promptText, toast,
+} from '../ui/overlay.js';
+import { canEdit } from '../ui/editor.js';
+import {
+  SECTION_MODES, deleteSavedFilter, findSavedFilters, resolveSavedFilter, saveFilter,
+} from '../api/savedFilters.js';
 import { focusFirst } from '../nav/focus.js';
 import { openItem } from '../ui/navigate.js';
 import * as api from '../api/stash.js';
@@ -34,7 +39,11 @@ function saveSort(section, key) {
   } catch (e) { /* storage full or unavailable: not important */ }
 }
 
-/** Per-section configuration. */
+/**
+ * Per-section configuration. Toggles carry their filter twice: `filter` in
+ * the API's format for queries, and `uiFilter` in Stash's saved-filter
+ * format for saving the current view as a saved filter.
+ */
 const CONFIGS = {
   scenes: {
     title: 'Scenes',
@@ -42,8 +51,12 @@ const CONFIGS = {
     sorts: api.SCENE_SORTS,
     find: api.findScenes,
     toggles: [
-      { id: 'unwatched', label: 'Unwatched', filter: { play_count: { value: 0, modifier: 'EQUALS' } } },
-      { id: 'inprogress', label: 'In progress', filter: api.filters.inProgress() },
+      {
+        id: 'unwatched', label: 'Unwatched', filter: { play_count: { value: 0, modifier: 'EQUALS' } }, uiFilter: { play_count: { modifier: 'EQUALS', value: { value: 0 } } },
+      },
+      {
+        id: 'inprogress', label: 'In progress', filter: api.filters.inProgress(), uiFilter: { resume_time: { modifier: 'GREATER_THAN', value: { value: 0 } } },
+      },
     ],
     empty: 'No scenes match. Try another filter.',
   },
@@ -54,6 +67,14 @@ const CONFIGS = {
     find: api.findGroups,
     toggles: [],
     empty: 'No groups yet. Groups (formerly movies) collect scenes into series.',
+  },
+  markers: {
+    title: 'Markers',
+    kind: 'marker',
+    sorts: api.MARKER_SORTS,
+    find: api.findMarkers,
+    toggles: [],
+    empty: 'No markers yet. Markers point to moments inside scenes.',
   },
   galleries: {
     title: 'Galleries',
@@ -76,7 +97,9 @@ const CONFIGS = {
     kind: 'performer',
     sorts: api.PERFORMER_SORTS,
     find: api.findPerformers,
-    toggles: [{ id: 'favorites', label: 'Favourites', filter: { filter_favorites: true } }],
+    toggles: [{
+      id: 'favorites', label: 'Favourites', filter: { filter_favorites: true }, uiFilter: { filter_favorites: { modifier: 'EQUALS', value: 'true' } },
+    }],
     empty: 'No performers match.',
   },
   studios: {
@@ -84,7 +107,9 @@ const CONFIGS = {
     kind: 'studio',
     sorts: api.STUDIO_SORTS,
     find: api.findStudios,
-    toggles: [{ id: 'favorites', label: 'Favourites', filter: { favorite: true } }],
+    toggles: [{
+      id: 'favorites', label: 'Favourites', filter: { favorite: true }, uiFilter: { favorite: { modifier: 'EQUALS', value: 'true' } },
+    }],
     empty: 'No studios match.',
   },
   tags: {
@@ -92,7 +117,9 @@ const CONFIGS = {
     kind: 'tag',
     sorts: api.TAG_SORTS,
     find: api.findTags,
-    toggles: [{ id: 'favorites', label: 'Favourites', filter: { favorite: true } }],
+    toggles: [{
+      id: 'favorites', label: 'Favourites', filter: { favorite: true }, uiFilter: { favorite: { modifier: 'EQUALS', value: 'true' } },
+    }],
     /** Tags with no scenes are hidden unless turned off in Settings. */
     baseFilter: () => (getSettings().hideEmptyTags ? { scene_count: { value: 0, modifier: 'GREATER_THAN' } } : null),
     empty: 'No tags match.',
@@ -139,6 +166,7 @@ export class BrowseScreen extends Screen {
       class: 'button ghost toggle focusable', style: { display: 'none' }, onSelect: () => this.pickSaved(),
     }, [icon('filter'), this.savedLabel]);
 
+    this.toggleButtons = toggleButtons;
     this.grid = new Grid({
       kind: this.config.kind,
       perPage: 40,
@@ -160,10 +188,11 @@ export class BrowseScreen extends Screen {
     // Offer Stash's saved filters for this section, if any exist.
     try {
       this.savedFilters = await findSavedFilters(SECTION_MODES[this.section]);
-      if (this.savedFilters.length) this.savedButton.style.display = '';
     } catch (e) {
       this.savedFilters = [];
     }
+    // With editing on, the menu can also create filters, so it is always shown.
+    if (this.savedFilters.length || canEdit()) this.savedButton.style.display = '';
   }
 
   /** Builds the query for one page from the saved filter, sort and toggles. */
@@ -185,33 +214,142 @@ export class BrowseScreen extends Screen {
     });
   }
 
-  /** Applies (or clears) one of Stash's saved filters. */
+  /**
+   * The Saved filters menu: apply one of Stash's saved filters, or (with
+   * editing on) save the current view as a new filter, update, rename or
+   * delete the one in use.
+   */
   async pickSaved() {
-    const id = await chooseOption({
-      title: 'Saved filters',
-      options: [{ label: 'None', value: '' }].concat(this.savedFilters.map((f) => ({ label: f.name, value: f.id }))),
-      selected: this.saved ? this.saved.id : '',
-    });
-    if (id === undefined) return;
-    if (!id) {
-      this.saved = null;
-      this.savedLabel.textContent = 'Saved filters';
-      this.savedButton.classList.remove('on');
-      this.reload();
-      return;
+    const editing = canEdit();
+    const options = [{ label: 'None', value: '' }]
+      .concat(this.savedFilters.map((f) => ({ label: f.name, value: f.id })));
+    if (editing) {
+      options.push({ label: 'Save this view as a new filter…', value: '__new' });
+      if (this.saved) {
+        options.push({ label: `Update “${this.saved.name}” with this view`, value: '__update' });
+        options.push({ label: `Rename “${this.saved.name}”…`, value: '__rename' });
+        options.push({ label: `Delete “${this.saved.name}”…`, value: '__delete' });
+      }
     }
-    const f = this.savedFilters.find((x) => x.id === id);
+    const choice = await chooseOption({ title: 'Saved filters', options, selected: this.saved ? this.saved.id : '' });
+    if (choice === undefined) return;
+    if (choice === '__new') return this.saveView();
+    if (choice === '__update') return this.saveView(this.saved);
+    if (choice === '__rename') return this.renameSaved();
+    if (choice === '__delete') return this.deleteSaved();
+    if (!choice) {
+      this.applySaved(null);
+      return undefined;
+    }
+    const f = this.savedFilters.find((x) => x.id === choice);
     try {
-      const resolved = await resolveSavedFilter(f);
-      this.saved = { id, name: f.name, query: resolved.query };
+      this.applySaved(f, await resolveSavedFilter(f));
     } catch (err) {
       toast(`Couldn't use "${f.name}": ${err.message}`, 'error');
-      return;
     }
+    return undefined;
+  }
+
+  /** Shows a saved filter's results (or clears it with `f` = null). */
+  applySaved(f, resolved) {
+    this.saved = f ? {
+      id: f.id, name: f.name, query: resolved.query, raw: f,
+    } : null;
     this.sortChosen = false;
-    this.savedLabel.textContent = f.name;
-    this.savedButton.classList.add('on');
+    this.savedLabel.textContent = f ? f.name : 'Saved filters';
+    this.savedButton.classList.toggle('on', !!f);
     this.reload();
+  }
+
+  /**
+   * The current view as a saved filter: the sort, the active toggles and,
+   * when a saved filter is in use, its own criteria.
+   */
+  currentView() {
+    let objectFilter = this.saved ? Object.assign({}, this.saved.raw.object_filter || {}) : {};
+    for (const t of this.config.toggles) {
+      if (this.activeToggles[t.id] && t.uiFilter) objectFilter = Object.assign(objectFilter, t.uiFilter);
+    }
+    const useSaved = this.saved && this.saved.query.sort && !this.sortChosen;
+    const findFilter = {
+      sort: useSaved ? this.saved.query.sort : this.sort.key,
+      direction: useSaved ? this.saved.query.direction : this.sort.direction,
+      per_page: 40,
+    };
+    if (this.saved && this.saved.query.q) findFilter.q = this.saved.query.q;
+    return { findFilter, objectFilter };
+  }
+
+  /** Saves the current view as a new filter, or over `existing`. */
+  async saveView(existing) {
+    let name = existing ? existing.name : '';
+    if (!existing) {
+      name = await promptText({ title: 'Name for this filter', confirm: 'Save' });
+      if (!name || !name.trim()) return;
+      name = name.trim();
+    }
+    const view = this.currentView();
+    try {
+      const saved = await saveFilter({
+        id: existing ? existing.id : undefined,
+        mode: SECTION_MODES[this.section],
+        name,
+        findFilter: view.findFilter,
+        objectFilter: view.objectFilter,
+      });
+      await this.refreshSaved();
+      // The new filter now describes the view: show it as the active filter
+      // and clear the toggles it absorbed.
+      this.activeToggles = {};
+      for (const b of this.toggleButtons) b.classList.remove('on');
+      this.applySaved(saved, await resolveSavedFilter(saved));
+      toast(existing ? `Updated “${name}”` : `Saved “${name}”`);
+    } catch (err) {
+      toast(`Couldn't save the filter: ${err.message}`, 'error');
+    }
+  }
+
+  async renameSaved() {
+    const cur = this.saved;
+    const name = await promptText({ title: 'Rename filter', value: cur.name, confirm: 'Rename' });
+    if (!name || !name.trim() || name.trim() === cur.name) return;
+    try {
+      const raw = cur.raw;
+      const saved = await saveFilter({
+        id: cur.id, mode: raw.mode, name: name.trim(), findFilter: raw.find_filter, objectFilter: raw.object_filter,
+      });
+      await this.refreshSaved();
+      this.saved.name = saved.name;
+      this.saved.raw = saved;
+      this.savedLabel.textContent = saved.name;
+      toast(`Renamed to “${saved.name}”`);
+    } catch (err) {
+      toast(`Couldn't rename: ${err.message}`, 'error');
+    }
+  }
+
+  async deleteSaved() {
+    const cur = this.saved;
+    const ok = await confirmDialog({
+      title: `Delete “${cur.name}”?`,
+      message: 'The filter is removed from Stash for every device and the web UI.',
+      confirm: 'Delete',
+      safe: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteSavedFilter(cur.id);
+      await this.refreshSaved();
+      this.applySaved(null);
+      toast(`Deleted “${cur.name}”`);
+    } catch (err) {
+      toast(`Couldn't delete: ${err.message}`, 'error');
+    }
+  }
+
+  /** Reloads the list of saved filters for this section. */
+  async refreshSaved() {
+    this.savedFilters = await findSavedFilters(SECTION_MODES[this.section]);
   }
 
   reload() {

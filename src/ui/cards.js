@@ -120,6 +120,17 @@ export function tagCard(t, onSelect) {
   return card;
 }
 
+/**
+ * Second line of a marker card: the primary tag (when the title differs)
+ * and, in marker browsers, the scene it belongs to.
+ */
+function markerSub(m) {
+  const parts = [];
+  if (m.primary_tag && m.title && m.title !== m.primary_tag.name) parts.push(m.primary_tag.name);
+  if (m.scene) parts.push(sceneTitle(m.scene));
+  return parts.length ? h('div', { class: 'card-sub' }, parts.map((x) => h('span', null, x))) : null;
+}
+
 /** Marker card: screenshot at the marker, title and timestamp. */
 export function markerCard(m, onSelect) {
   const title = m.title || (m.primary_tag && m.primary_tag.name) || 'Marker';
@@ -130,7 +141,7 @@ export function markerCard(m, onSelect) {
     ]),
     h('div', { class: 'card-text' }, [
       h('div', { class: 'card-title' }, title),
-      m.primary_tag && m.title ? h('div', { class: 'card-sub' }, h('span', null, m.primary_tag.name)) : null,
+      markerSub(m),
     ]),
   ]);
   card.__item = m;
@@ -218,6 +229,7 @@ function countLabel(n) {
 
 /** Thumbnail shape per card kind, for skeletons. */
 const SKELETON_RATIO = {
+  marker: 'ratio-16x9',
   performer: 'ratio-2x3', group: 'ratio-2x3', tag: 'ratio-1x1', image: 'ratio-1x1', gallery: 'ratio-4x3',
 };
 

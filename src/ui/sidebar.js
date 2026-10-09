@@ -2,7 +2,7 @@
  * Left navigation rail. Collapsed to icons; widens to show labels while the
  * highlight is inside it.
  */
-import { h, icon } from '../util/dom.js';
+import { brandMark, h, icon } from '../util/dom.js';
 import { onFocusChange } from '../nav/focus.js';
 import { openSection } from './navigate.js';
 
@@ -11,6 +11,7 @@ const SECTIONS = [
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'scenes', label: 'Scenes', icon: 'film' },
   { id: 'groups', label: 'Groups', icon: 'group' },
+  { id: 'markers', label: 'Markers', icon: 'markers' },
   { id: 'galleries', label: 'Galleries', icon: 'images' },
   { id: 'images', label: 'Images', icon: 'image' },
   { id: 'performers', label: 'Performers', icon: 'person' },
@@ -32,7 +33,7 @@ export class Sidebar {
       return item;
     });
     this.el = h('nav', { class: 'sidebar nav-group nav-zone no-scroll' }, [
-      h('div', { class: 'brand' }, [h('span', { class: 'brand-mark' }, 'S'), h('span', { class: 'brand-word' }, 'Stash')]),
+      h('div', { class: 'brand' }, [brandMark(), h('span', { class: 'brand-word' }, 'Stash')]),
       h('div', { class: 'nav-list' }, list),
     ]);
     onFocusChange((el) => {

@@ -25,6 +25,7 @@ export const MODES = {
   GALLERIES: { kind: 'gallery', type: 'GalleryFilterType', find: api.findGalleries, noun: 'galleries' },
   IMAGES: { kind: 'image', type: 'ImageFilterType', find: api.findImages, noun: 'images' },
   GROUPS: { kind: 'group', type: 'GroupFilterType', find: api.findGroups, noun: 'groups' },
+  SCENE_MARKERS: { kind: 'marker', type: 'SceneMarkerFilterType', find: api.findMarkers, noun: 'markers' },
   MOVIES: { kind: 'group', type: 'GroupFilterType', find: api.findGroups, noun: 'groups' },
 };
 
@@ -37,6 +38,7 @@ export const SECTION_MODES = {
   galleries: 'GALLERIES',
   images: 'IMAGES',
   groups: 'GROUPS',
+  markers: 'SCENE_MARKERS',
 };
 
 const SAVED_FILTER_FIELDS = 'id name mode find_filter { q sort direction per_page } object_filter';
@@ -292,7 +294,7 @@ export async function resolveSavedFilter(saved) {
  * Rows for the home screen from Stash's own front page setting
  * (Settings → Interface in Stash). Each row is
  * { title, kind, load: () => Promise<items> }.
- * Unsupported entries (e.g. scene marker filters) are skipped.
+ * Unsupported entries (unknown filter modes) are skipped.
  * @param {Array<Object>} content  configuration.ui.frontPageContent
  * @param {number} perRow
  */
@@ -332,4 +334,38 @@ export function frontPageRows(content, perRow) {
     }
   }
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Creating, updating and deleting saved filters
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates or overwrites a saved filter.
+ *
+ * `objectFilter` must be in Stash's UI format (see the top of this file),
+ * so the filter also works in Stash's web UI. The app only writes the few
+ * criteria it can set itself (see the `uiFilter` of the browse toggles) and
+ * keeps whatever an existing filter already had.
+ * @param {{id?: string, mode: string, name: string, findFilter: Object, objectFilter: Object}} f
+ * @returns {Promise<Object>} the saved filter
+ */
+export async function saveFilter(f) {
+  const input = {
+    mode: f.mode,
+    name: f.name,
+    find_filter: f.findFilter,
+    object_filter: f.objectFilter || {},
+    ui_options: {},
+  };
+  if (f.id) input.id = f.id;
+  const data = await getClient().query(`mutation ($i: SaveFilterInput!) {
+    saveFilter(input: $i) { ${SAVED_FILTER_FIELDS} }
+  }`, { i: input });
+  return data.saveFilter;
+}
+
+/** Deletes a saved filter. */
+export function deleteSavedFilter(id) {
+  return getClient().query('mutation ($i: DestroyFilterInput!) { destroySavedFilter(input: $i) }', { i: { id } });
 }

@@ -23,6 +23,9 @@ export const CONTENT_TYPES = {
   image: {
     label: 'Images', noun: 'image', find: api.findImages, sorts: api.IMAGE_SORTS, sort: 'date', empty: 'No images yet.',
   },
+  marker: {
+    label: 'Markers', noun: 'marker', find: api.findMarkers, sorts: api.MARKER_SORTS, sort: 'created_at', empty: 'No markers yet.',
+  },
   group: {
     label: 'Groups', noun: 'group', find: api.findGroups, sorts: api.GROUP_SORTS, sort: 'date', empty: 'No groups yet.',
   },

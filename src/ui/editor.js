@@ -2,7 +2,8 @@
  * Edit panel: changes an item's metadata in Stash from the TV.
  *
  * What can be edited (things that work well with a remote):
- * - scenes: title, rating, O-count, organized, tags, performers
+ * - scenes: title, rating, O-count, organized, studio, tags, performers,
+ *   groups (with the scene's number in each) and galleries
  * - images: title, rating, O-count, organized
  * - galleries: title, rating, organized
  * - groups: rating
@@ -21,7 +22,7 @@ import { focus, getFocused } from '../nav/focus.js';
 import { getSettings } from '../settings.js';
 import * as api from '../api/stash.js';
 import {
-  galleryTitle, imageTitle, sceneTitle, stars,
+  countOf, galleryTitle, imageTitle, sceneTitle, stars,
 } from '../util/format.js';
 
 /** True when editing is allowed (Settings → Editing). */
@@ -36,7 +37,7 @@ const RATING_OPTIONS = [{ label: 'No rating', value: null }].concat(
 
 /** Field definitions per kind, in display order. */
 const FIELDS = {
-  scene: ['title', 'rating', 'o', 'organized', 'tags', 'performers'],
+  scene: ['title', 'rating', 'o', 'organized', 'studio', 'tags', 'performers', 'groups', 'galleries'],
   image: ['title', 'rating', 'o', 'organized'],
   gallery: ['title', 'rating', 'organized'],
   group: ['rating'],
@@ -145,6 +146,98 @@ export function openEditor(kind, item, onSaved, onClose) {
     },
     tags: listAction('Tags', 'tag', 'tags', 'tag_ids', api.findTags),
     performers: listAction('Performers', 'performer', 'performers', 'performer_ids', api.findPerformers),
+    galleries: listAction('Galleries', 'gallery', 'galleries', 'gallery_ids', api.findGalleries, {
+      labelOf: galleryTitle,
+      sort: 'title',
+      direction: 'ASC',
+      hintOf: (g) => countOf(g.image_count, 'image'),
+      keep: (g) => ({
+        id: g.id, title: g.title, files: g.files, folder: g.folder, image_count: g.image_count,
+      }),
+    }),
+    studio: {
+      label: 'Studio',
+      value: () => (item.studio ? item.studio.name : 'None'),
+      run: async () => {
+        const choice = item.studio
+          ? await chooseOption({
+            title: 'Studio',
+            options: [{ label: 'Choose another studio…', value: 'pick' }, { label: `Remove ${item.studio.name}`, value: 'remove' }],
+          })
+          : 'pick';
+        if (!choice) return;
+        if (choice === 'remove') {
+          const name = item.studio.name;
+          if (await save({ studio_id: null }, `Removed ${name}`)) {
+            item.studio = null;
+            delete item.studio_id;
+            render();
+          }
+          return;
+        }
+        const picked = await pickBySearch({
+          title: 'Choose a studio',
+          search: (text) => api.findStudios({ q: text, perPage: 20, sort: 'scenes_count', direction: 'DESC' })
+            .then((r) => r.items.map((x) => ({ label: x.name, hint: `${x.scene_count} scenes`, value: x }))),
+        });
+        if (!picked) return;
+        if (await save({ studio_id: picked.id }, `Studio: ${picked.name}`)) {
+          item.studio = { id: picked.id, name: picked.name, image_path: picked.image_path };
+          delete item.studio_id;
+          render();
+        }
+      },
+    },
+    groups: {
+      label: 'Groups',
+      value: () => String((item.groups || []).length),
+      run: async () => {
+        const current = item.groups || [];
+        const choice = await chooseOption({
+          title: 'Groups',
+          options: [{ label: 'Add to a group…', value: '__add' }].concat(current.map((gs) => ({
+            label: gs.group.name, hint: gs.scene_index ? `#${gs.scene_index}, remove` : 'Remove', value: gs.group.id,
+          }))),
+        });
+        if (choice === undefined) return;
+        let next;
+        let message;
+        if (choice === '__add') {
+          const picked = await pickBySearch({
+            title: 'Add to a group',
+            search: (text) => api.findGroups({ q: text, perPage: 20, sort: 'name', direction: 'ASC' })
+              .then((r) => r.items.filter((x) => !current.some((c) => c.group.id === x.id))
+                .map((x) => ({ label: x.name, hint: countOf(x.scene_count, 'scene'), value: x }))),
+          });
+          if (!picked) return;
+          // The scene's position in the group (optional; Stash orders by it).
+          const num = await promptText({
+            title: `Scene number in ${picked.name}`,
+            placeholder: 'Leave empty for none',
+            value: String((picked.scene_count || 0) + 1),
+            confirm: 'Add',
+          });
+          if (num === undefined) return;
+          const index = parseInt(num, 10);
+          next = current.concat([{ group: { id: picked.id, name: picked.name }, scene_index: index > 0 ? index : null }]);
+          message = `Added to ${picked.name}`;
+        } else {
+          const removed = current.find((gs) => gs.group.id === choice);
+          next = current.filter((gs) => gs.group.id !== choice);
+          message = `Removed from ${removed ? removed.group.name : 'group'}`;
+        }
+        const groups = next.map((gs) => {
+          const g = { group_id: gs.group.id };
+          if (gs.scene_index) g.scene_index = gs.scene_index;
+          return g;
+        });
+        if (await save({ groups }, message)) {
+          item.groups = next;
+          render();
+          if (onSaved) onSaved({ groups: next });
+        }
+      },
+    },
   };
 
   /**
@@ -155,7 +248,14 @@ export function openEditor(kind, item, onSaved, onClose) {
    * @param {string} idsField  update input field (e.g. tag_ids)
    * @param {Function} finder  api.findTags / api.findPerformers
    */
-  function listAction(label, noun, field, idsField, finder) {
+  function listAction(label, noun, field, idsField, finder, opts) {
+    const o = Object.assign({
+      labelOf: (x) => x.name,
+      sort: 'scenes_count',
+      direction: 'DESC',
+      hintOf: (x) => (x.scene_count !== undefined ? `${x.scene_count} scenes` : ''),
+      keep: (x) => ({ id: x.id, name: x.name, image_path: x.image_path }),
+    }, opts || {});
     return {
       label,
       value: () => String((item[field] || []).length),
@@ -164,7 +264,7 @@ export function openEditor(kind, item, onSaved, onClose) {
         const choice = await chooseOption({
           title: label,
           options: [{ label: `Add a ${noun}…`, value: '__add' }].concat(
-            current.map((x) => ({ label: x.name, hint: 'Remove', value: x.id })),
+            current.map((x) => ({ label: o.labelOf(x), hint: 'Remove', value: x.id })),
           ),
         });
         if (choice === undefined) return;
@@ -173,17 +273,18 @@ export function openEditor(kind, item, onSaved, onClose) {
         if (choice === '__add') {
           const picked = await pickBySearch({
             title: `Add a ${noun}`,
-            search: (text) => finder({ q: text, perPage: 20, sort: 'scenes_count', direction: 'DESC' })
-              .then((r) => r.items.filter((x) => !current.some((c) => c.id === x.id))
-                .map((x) => ({ label: x.name, hint: x.scene_count !== undefined ? `${x.scene_count} scenes` : '', value: x }))),
+            search: (text) => finder({
+              q: text, perPage: 20, sort: o.sort, direction: o.direction,
+            }).then((r) => r.items.filter((x) => !current.some((c) => c.id === x.id))
+              .map((x) => ({ label: o.labelOf(x), hint: o.hintOf(x), value: x }))),
           });
           if (!picked) return;
-          next = current.concat([{ id: picked.id, name: picked.name, image_path: picked.image_path }]);
-          message = `Added ${picked.name}`;
+          next = current.concat([o.keep(picked)]);
+          message = `Added ${o.labelOf(picked)}`;
         } else {
           const removed = current.find((x) => x.id === choice);
           next = current.filter((x) => x.id !== choice);
-          message = `Removed ${removed ? removed.name : noun}`;
+          message = `Removed ${removed ? o.labelOf(removed) : noun}`;
         }
         const ok = await save({ [idsField]: next.map((x) => x.id) }, message);
         if (ok) {

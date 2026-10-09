@@ -33,11 +33,16 @@ export class EntityScreen extends Screen {
     this.el.classList.add('screen-entity', `screen-entity-${kind}`);
 
     this.header = h('header', { class: 'entity-header' });
+    // Markers are listed for tags only: Stash counts them per tag, and a
+    // tag (e.g. a position or action) is what people browse markers by.
+    const types = kind === 'tag' ? ['scene', 'marker', 'gallery', 'image', 'group'] : ['scene', 'gallery', 'image', 'group'];
     this.collection = new Collection({
-      types: ['scene', 'gallery', 'image', 'group'],
+      types,
       filter: () => this.conf.filter(this.item.id),
       // Until the details arrive we don't know which tabs have content.
-      counts: { gallery: 0, image: 0, group: 0 },
+      counts: {
+        gallery: 0, image: 0, group: 0, marker: 0,
+      },
     });
 
     this.el.appendChild(this.header);
@@ -53,7 +58,7 @@ export class EntityScreen extends Screen {
         this.loaded = true;
         this.renderHeader(full);
         this.collection.setCounts({
-          gallery: full.gallery_count, image: full.image_count, group: full.group_count,
+          gallery: full.gallery_count, image: full.image_count, group: full.group_count, marker: full.scene_marker_count || 0,
         });
       }
     } catch (err) {

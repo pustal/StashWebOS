@@ -1,6 +1,6 @@
 {
   "name": "org.stashwebos.app.service",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Signs in to Stash with a username and password and returns its API key.",
   "main": "service.js",
   "private": true

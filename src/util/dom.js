@@ -112,3 +112,12 @@ export function icon(name, cls) {
     + (ICONS[name] || '') + '</svg>';
   return span;
 }
+
+/**
+ * The Stash logo used in the sidebar and on the connect screen: the same
+ * image as the launcher icon (dist/icons/largeIcon.png, made by
+ * scripts/make-icons.py), so the app and its icon always match.
+ */
+export function brandMark() {
+  return h('img', { class: 'brand-mark', src: 'icons/largeIcon.png', alt: 'Stash' });
+}

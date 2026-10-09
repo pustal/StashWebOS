@@ -32,6 +32,12 @@ export class Grid {
   /** Clears the grid and starts again with a new page source (sort/filter change). */
   reset(fetchPage) {
     this.fetchPage = fetchPage || this.fetchPage;
+    // On a reload (sort, toggle or saved filter change) the highlight is on
+    // the toolbar button that was just pressed: leave it there, so the user
+    // can keep adjusting the view, instead of jumping into the new results.
+    const cur = this.generation > 0 ? document.querySelector('.focused') : null;
+    const screenEl = this.el.closest('.screen');
+    this.holdFocus = !!(cur && screenEl && screenEl.contains(cur) && !this.el.contains(cur));
     this.generation += 1;
     this.page = 0;
     this.count = null;
@@ -89,7 +95,7 @@ export class Grid {
       if (this.page === 1 && this.opts.autofocus !== false && this.loaded > 0) {
         const screenEl = this.el.closest('.screen');
         const visible = screenEl && screenEl.style.display !== 'none';
-        if (visible && userActions() === actionsBefore) focusFirst(this.el);
+        if (visible && !this.holdFocus && userActions() === actionsBefore) focusFirst(this.el);
       }
     } catch (err) {
       if (gen !== this.generation) return;

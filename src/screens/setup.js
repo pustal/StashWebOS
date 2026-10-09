@@ -7,7 +7,7 @@
  *   bundled webOS service; only the key is saved (see api/login.js).
  */
 import { Screen } from '../ui/router.js';
-import { h } from '../util/dom.js';
+import { brandMark, h } from '../util/dom.js';
 import { focus } from '../nav/focus.js';
 import { getSettings } from '../settings.js';
 import { connectTo, connectWithPassword } from '../session.js';
@@ -52,7 +52,7 @@ export class SetupScreen extends Screen {
     this.button = h('div', { class: 'button primary focusable', onSelect: () => this.submit() }, 'Connect');
 
     this.el.appendChild(h('div', { class: 'setup-panel' }, [
-      h('div', { class: 'setup-brand' }, [h('span', { class: 'brand-mark' }, 'S'), h('span', { class: 'setup-word' }, 'Stash')]),
+      h('div', { class: 'setup-brand' }, [brandMark(), h('span', { class: 'setup-word' }, 'Stash')]),
       h('h1', { class: 'setup-title' }, 'Connect to your Stash server'),
       h('label', { class: 'field' }, [h('span', { class: 'field-label' }, 'Server address'), this.urlInput]),
       h('div', { class: 'setup-tabs nav-group', 'data-no-memory': true }, [this.keyTab, this.passTab]),

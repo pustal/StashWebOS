@@ -130,16 +130,11 @@ body.no-sidebar .content {
 }
 .brand-mark {
   flex-shrink: 0;
-  display: inline-block;
+  display: block;
   width: 3rem;
   height: 3rem;
-  line-height: 3rem;
-  text-align: center;
-  border-radius: 50%;
-  background: var(--brass);
-  color: var(--brass-ink);
-  font-family: var(--display);
-  font-size: 1.8rem;
+  border-radius: 0.6rem;
+  object-fit: cover;
 }
 .brand-word {
   margin-left: 1rem;
@@ -1542,3 +1537,6 @@ body.no-sidebar .content {
 .setup-tabs .button {
   margin: 0 1rem 0 0;
 }
+
+/* Scene markers (0.4) */
+.grid-marker .card { width: calc(25% - 1.5rem); }

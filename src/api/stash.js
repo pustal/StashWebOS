@@ -244,6 +244,7 @@ export async function getTag(id) {
     findTag(id: $id) {
       id name description aliases image_path favorite
       scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
+      scene_marker_count(depth: -1)
       children { id }
     }
   }`, { id });
@@ -453,6 +454,45 @@ export const filters = {
  */
 export function sortKey(key, seed) {
   return key === 'random' ? `random_${seed}` : key;
+}
+
+// ---------------------------------------------------------------------------
+// Scene markers
+// ---------------------------------------------------------------------------
+
+const MARKER_CARD = `
+fragment MarkerCard on SceneMarker {
+  id title seconds end_seconds screenshot
+  primary_tag { id name }
+  tags { id name }
+  scene { id title files { basename duration } }
+}`;
+
+export const MARKER_SORTS = [
+  { key: 'created_at', label: 'Recently added', direction: 'DESC' },
+  { key: 'title', label: 'Title', direction: 'ASC' },
+  { key: 'scene_id', label: 'Scene', direction: 'DESC' },
+  { key: 'seconds', label: 'Time in scene', direction: 'ASC' },
+  { key: 'duration', label: 'Length', direction: 'DESC' },
+  { key: 'random', label: 'Shuffle', direction: 'ASC' },
+];
+
+/** Finds scene markers (filter is a SceneMarkerFilterType). */
+export async function findMarkers(opts) {
+  const o = opts || {};
+  const data = await q(`${MARKER_CARD}
+    query ($filter: FindFilterType, $f: SceneMarkerFilterType) {
+      findSceneMarkers(filter: $filter, scene_marker_filter: $f) {
+        count
+        scene_markers { ...MarkerCard }
+      }
+    }`, {
+    filter: {
+      page: o.page || 1, per_page: o.perPage || 40, sort: o.sort, direction: o.direction, q: o.q,
+    },
+    f: o.filter || null,
+  });
+  return { count: data.findSceneMarkers.count, items: data.findSceneMarkers.scene_markers };
 }
 
 // ---------------------------------------------------------------------------

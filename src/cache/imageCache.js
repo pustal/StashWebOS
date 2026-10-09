@@ -78,7 +78,7 @@ let webpSupported = null;
 export function initImageCache(opts) {
   budgetBytes = Math.max(0, opts.budgetBytes || 0);
   authHeaders = opts.headers || {};
-  if (!dbReady) dbReady = openDb().then(scanSize).catch((e) => {
+  if (!dbReady) dbReady = openDb().then(scanSize).then(upgradeFormat).catch((e) => {
     console.warn('image cache: IndexedDB unavailable, using RAM only', e);
     db = null;
   });
@@ -112,6 +112,27 @@ function openDb() {
       resolve();
     };
     req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Version of what the store holds. Bump it when stored thumbnails become
+ * wrong for a new app version; the store is then emptied once.
+ * 2 (0.4.0): animated images are no longer flattened to their first frame.
+ */
+const CACHE_FORMAT = 2;
+const FORMAT_KEY = 'stash.imageCacheFormat';
+
+function upgradeFormat() {
+  let stored = 0;
+  try {
+    stored = parseInt(window.localStorage.getItem(FORMAT_KEY) || '0', 10);
+  } catch (e) { /* no storage: nothing to upgrade */ }
+  if (stored >= CACHE_FORMAT) return Promise.resolve();
+  return clearImageCache().then(() => {
+    try {
+      window.localStorage.setItem(FORMAT_KEY, String(CACHE_FORMAT));
+    } catch (e) { /* ignore */ }
   });
 }
 
@@ -337,6 +358,63 @@ function decode(blob) {
   });
 }
 
+/** Animated images larger than this are shown as a still to spare RAM. */
+const MAX_ANIMATED_BYTES = 8 * 1024 * 1024;
+
+/** Reads the first `max` bytes of a blob (Blob.arrayBuffer needs Chromium 76). */
+function readBytes(blob, max) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result));
+    reader.onerror = () => resolve(new Uint8Array(0));
+    reader.readAsArrayBuffer(max ? blob.slice(0, max) : blob);
+  });
+}
+
+/** Index of an ASCII marker in bytes, or -1. */
+function findAscii(bytes, text, from, to) {
+  const end = Math.min(bytes.length - text.length, to === undefined ? bytes.length : to);
+  outer: for (let i = from || 0; i <= end; i += 1) { // eslint-disable-line no-labels
+    for (let k = 0; k < text.length; k += 1) {
+      if (bytes[i + k] !== text.charCodeAt(k)) continue outer; // eslint-disable-line no-labels
+    }
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * True for animated GIF, WebP and PNG (APNG) images.
+ * - GIF: more than one Graphic Control Extension (one per frame)
+ * - WebP: an ANIM chunk in the header
+ * - PNG: an acTL chunk before the image data
+ * @param {Blob} blob
+ */
+export async function isAnimated(blob) {
+  const type = blob.type || '';
+  if (/gif/.test(type)) {
+    const b = await readBytes(blob);
+    let frames = 0;
+    for (let i = 0; i < b.length - 2; i += 1) {
+      if (b[i] === 0x21 && b[i + 1] === 0xf9 && b[i + 2] === 0x04) {
+        frames += 1;
+        if (frames > 1) return true;
+      }
+    }
+    return false;
+  }
+  if (/webp/.test(type)) {
+    const b = await readBytes(blob, 256);
+    return findAscii(b, 'ANIM') >= 0;
+  }
+  if (/png/.test(type)) {
+    const b = await readBytes(blob, 64 * 1024);
+    const idat = findAscii(b, 'IDAT');
+    return findAscii(b, 'acTL', 0, idat < 0 ? undefined : idat) >= 0;
+  }
+  return false;
+}
+
 /**
  * Downscales an image blob to `width` pixels wide.
  * @param {Blob} blob
@@ -349,6 +427,9 @@ async function shrink(blob, width, alpha, quality) {
   const isSvg = /svg/.test(blob.type);
   // SVGs are tiny already; small images that already fit are kept untouched.
   if (isSvg) return blob;
+  // Redrawing on a canvas keeps only the first frame, so animated images
+  // (e.g. animated tag thumbnails) are kept as they are, unless huge.
+  if (blob.size <= MAX_ANIMATED_BYTES && await isAnimated(blob)) return blob;
   const img = await decode(blob);
   const w = img.naturalWidth || img.width;
   const hgt = img.naturalHeight || img.height;
