@@ -1,12 +1,12 @@
 /**
- * Performer, studio and tag screens: a header about the entity and a grid
- * of its scenes, with a sort menu.
+ * Performer, studio and tag screens: a header about the entity and its
+ * scenes, galleries, images and groups in tabs (empty tabs are hidden).
  */
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
-import { Grid } from '../ui/grid.js';
+import { Collection } from '../ui/collection.js';
 import { stashImage } from '../ui/cards.js';
-import { chooseOption, toast } from '../ui/overlay.js';
+import { toast } from '../ui/overlay.js';
 import { focusFirst } from '../nav/focus.js';
 import * as api from '../api/stash.js';
 import {
@@ -29,34 +29,18 @@ export class EntityScreen extends Screen {
     this.kind = kind;
     this.conf = KINDS[kind];
     this.item = item;
-    this.seed = Math.floor(Math.random() * 1e8);
-    this.sort = api.SCENE_SORTS[1]; // release date, newest first
     this.el.classList.add('screen-entity', `screen-entity-${kind}`);
 
     this.header = h('header', { class: 'entity-header' });
-    this.sortLabel = h('span', null, this.sort.label);
-    this.countEl = h('span', { class: 'page-count' });
-    this.toolbar = h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [
-      h('div', { class: 'button ghost focusable', onSelect: () => this.pickSort() }, [icon('sort'), this.sortLabel]),
-    ]);
-    this.grid = new Grid({
-      kind: 'scene',
-      emptyText: 'No scenes yet.',
-      fetchPage: (page, perPage) => api.findScenes({
-        page,
-        perPage,
-        sort: api.sortKey(this.sort.key, this.seed),
-        direction: this.sort.direction,
-        filter: this.conf.filter(this.item.id),
-      }),
-      onCount: (n) => {
-        this.countEl.textContent = n === 1 ? '1 scene' : `${n.toLocaleString()} scenes`;
-      },
+    this.collection = new Collection({
+      types: ['scene', 'gallery', 'image', 'group'],
+      filter: () => this.conf.filter(this.item.id),
+      // Until the details arrive we don't know which tabs have content.
+      counts: { gallery: 0, image: 0, group: 0 },
     });
 
     this.el.appendChild(this.header);
-    this.el.appendChild(h('div', { class: 'entity-bar' }, [this.countEl, this.toolbar]));
-    this.el.appendChild(this.grid.el);
+    this.el.appendChild(this.collection.el);
     this.renderHeader(item);
   }
 
@@ -66,6 +50,9 @@ export class EntityScreen extends Screen {
       if (full) {
         this.item = full;
         this.renderHeader(full);
+        this.collection.setCounts({
+          gallery: full.gallery_count, image: full.image_count, group: full.group_count,
+        });
       }
     } catch (err) {
       toast(`Couldn't load details: ${err.message}`, 'error');
@@ -128,20 +115,7 @@ export class EntityScreen extends Screen {
     }
   }
 
-  async pickSort() {
-    const key = await chooseOption({
-      title: 'Sort scenes by',
-      options: api.SCENE_SORTS.map((s) => ({ label: s.label, value: s.key })),
-      selected: this.sort.key,
-    });
-    if (!key) return;
-    if (key === 'random') this.seed = Math.floor(Math.random() * 1e8);
-    this.sort = api.SCENE_SORTS.find((s) => s.key === key);
-    this.sortLabel.textContent = this.sort.label;
-    this.grid.reset();
-  }
-
   focusDefault() {
-    if (!focusFirst(this.grid.el)) focusFirst(this.el);
+    if (!this.collection.focus()) focusFirst(this.el);
   }
 }

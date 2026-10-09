@@ -1,55 +1,38 @@
 """Generates the webOS launcher icons and splash screen in assets/icons/.
 
 Run from the project root:  python3 scripts/make-icons.py
-Needs Pillow. Uses the bundled Bricolage Grotesque font when FreeType can
-read WOFF2, otherwise falls back to DejaVu Sans Bold.
+Needs Pillow.
+
+Source: assets/icons/source/stash-logo.jpg, the Stash project's logo
+(https://avatars.githubusercontent.com/u/24867479?s=400&v=4, 400x400 on
+black). It belongs to the Stash project; check their terms before
+publishing builds that use it.
 """
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
-BG = (29, 21, 38)       # --bg
-BRASS = (232, 185, 96)  # --brass
-INK = (43, 29, 7)       # --brass-ink
-TEXT = (244, 237, 228)  # --text
+SOURCE = Path("assets/icons/source/stash-logo.jpg")
 OUT = Path("assets/icons")
-FONT = Path("node_modules/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-700-normal.woff2")
-
-
-def font(size):
-    """Bricolage if readable, else a common bold sans."""
-    for candidate in (str(FONT), "DejaVuSans-Bold.ttf"):
-        try:
-            return ImageFont.truetype(candidate, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+BG = (0, 0, 0)  # the logo's own background, so edges blend in
 
 
 def icon(size):
-    """Brass disc with an 'S' on the stage colour, drawn 4x and downsampled."""
-    s = size * 4
-    im = Image.new("RGBA", (s, s), BG + (255,))
-    d = ImageDraw.Draw(im)
-    pad = int(s * 0.1)
-    d.ellipse([pad, pad, s - pad, s - pad], fill=BRASS)
-    d.text((s / 2, s / 2 + s * 0.02), "S", font=font(int(s * 0.55)), fill=INK, anchor="mm")
-    return im.resize((size, size), Image.LANCZOS)
+    """The logo scaled to a square launcher icon."""
+    return Image.open(SOURCE).convert("RGB").resize((size, size), Image.LANCZOS)
 
 
 def splash():
-    """Full-screen splash: the mark and the word on the stage colour."""
+    """Full-screen splash: the logo centred on its own black background."""
     im = Image.new("RGB", (1920, 1080), BG)
-    mark = icon(160)
-    im.paste(mark, (760 - 80, 460), mark)
-    d = ImageDraw.Draw(im)
-    d.text((880, 540), "Stash", font=font(120), fill=TEXT, anchor="lm")
+    logo = icon(400)
+    im.paste(logo, ((1920 - 400) // 2, (1080 - 400) // 2))
     return im
 
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    icon(80).save(OUT / "icon.png")
-    icon(130).save(OUT / "largeIcon.png")
+    icon(80).save(OUT / "icon.png", optimize=True)
+    icon(130).save(OUT / "largeIcon.png", optimize=True)
     splash().save(OUT / "splash.png", optimize=True)
     print("icons written to", OUT)

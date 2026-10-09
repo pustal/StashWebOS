@@ -17,7 +17,7 @@ export function registerNavigation(r, f) {
 
 /**
  * Opens the detail screen for an item.
- * @param {'scene'|'performer'|'studio'|'tag'|'player'} kind
+ * @param {'scene'|'performer'|'studio'|'tag'|'player'|'gallery'|'group'|'image'} kind
  * @param {Object} item
  * @param {Object} [extra] screen-specific options (e.g. start time)
  */

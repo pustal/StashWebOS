@@ -1,5 +1,5 @@
 /**
- * Search across scenes, performers, studios and tags.
+ * Search across scenes, groups, galleries, performers, studios, images and tags.
  *
  * Press OK on the field to open the TV keyboard. Results update shortly
  * after typing stops; press Down to leave the field and browse them.
@@ -21,7 +21,7 @@ export class SearchScreen extends Screen {
     this.input = h('input', {
       class: 'search-input focusable',
       type: 'search',
-      placeholder: 'Search titles, performers, studios, tags',
+      placeholder: 'Search scenes, galleries, images, people, tags',
       autocomplete: 'off',
       spellcheck: 'false',
       'data-autofocus': true,
@@ -57,8 +57,11 @@ export class SearchScreen extends Screen {
     const items = (p) => p.then((r) => r.items);
     const rows = [
       createRow({ title: 'Scenes', kind: 'scene', load: () => items(api.findScenes({ q: text, perPage: PER_ROW })) }),
+      createRow({ title: 'Groups', kind: 'group', load: () => items(api.findGroups({ q: text, perPage: PER_ROW })) }),
+      createRow({ title: 'Galleries', kind: 'gallery', load: () => items(api.findGalleries({ q: text, perPage: PER_ROW })) }),
       createRow({ title: 'Performers', kind: 'performer', load: () => items(api.findPerformers({ q: text, perPage: PER_ROW, sort: 'scenes_count', direction: 'DESC' })) }),
       createRow({ title: 'Studios', kind: 'studio', load: () => items(api.findStudios({ q: text, perPage: PER_ROW, sort: 'scenes_count', direction: 'DESC' })) }),
+      createRow({ title: 'Images', kind: 'image', load: () => items(api.findImages({ q: text, perPage: PER_ROW })) }),
       createRow({ title: 'Tags', kind: 'tag', load: () => items(api.findTags({ q: text, perPage: PER_ROW, sort: 'scenes_count', direction: 'DESC' })) }),
     ];
     for (const r of rows) this.results.appendChild(r.el);

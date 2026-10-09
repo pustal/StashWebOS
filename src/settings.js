@@ -59,6 +59,8 @@ export const DEFAULTS = {
   skipForward: 30,
   /** Save resume position / play count back to Stash. */
   trackActivity: true,
+  /** Seconds each image stays on screen in a slideshow. */
+  slideshowSeconds: 5,
   /** Show the scrubbing thumbnails (sprite sheet) while seeking. */
   seekPreview: true,
 };

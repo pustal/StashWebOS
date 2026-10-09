@@ -111,3 +111,50 @@ export function genderLabel(g) {
   };
   return map[g] || g;
 }
+
+/** Last segment of a file path ("/a/b/Beach Trip" → "Beach Trip"). */
+function baseName(path) {
+  return String(path || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+}
+
+/**
+ * Display title for a gallery: its title, else its folder or zip name, as
+ * Stash's own UI does.
+ * @param {{id: string, title?: string, folder?: {path: string}, files?: Array<{basename: string}>}} g
+ */
+export function galleryTitle(g) {
+  if (g.title) return g.title;
+  if (g.folder && g.folder.path) return baseName(g.folder.path);
+  const f = g.files && g.files[0];
+  if (f && f.basename) return f.basename.replace(/\.[^.]+$/, '');
+  return `Gallery ${g.id}`;
+}
+
+/**
+ * Display title for an image: its title, else the file name.
+ * @param {{id: string, title?: string, visual_files?: Array<{basename?: string}>}} img
+ */
+export function imageTitle(img) {
+  if (img.title) return img.title;
+  const f = img.visual_files && img.visual_files[0];
+  if (f && f.basename) return f.basename;
+  return `Image ${img.id}`;
+}
+
+/**
+ * How an image should be shown: 'photo' (still image), 'gif' (animated GIF,
+ * shown as-is so it keeps moving) or 'video' (short clip, shown in <video>).
+ * Stash reports animated GIFs and clips as VideoFile.
+ * @param {{visual_files?: Array<{__typename: string, format?: string}>}} img
+ */
+export function imageKind(img) {
+  const f = img.visual_files && img.visual_files[0];
+  if (!f || f.__typename !== 'VideoFile') return 'photo';
+  return (f.format || '').toLowerCase() === 'gif' ? 'gif' : 'video';
+}
+
+/** "1 image" / "24 images". */
+export function countOf(n, singular, plural) {
+  if (n === undefined || n === null) return '';
+  return n === 1 ? `1 ${singular}` : `${n.toLocaleString()} ${plural || singular + 's'}`;
+}

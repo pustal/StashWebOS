@@ -13,7 +13,7 @@ import { focusFirst, userActions } from '../nav/focus.js';
 export class Grid {
   /**
    * @param {Object} opts
-   * @param {'scene'|'performer'|'studio'|'tag'} opts.kind
+   * @param {'scene'|'performer'|'studio'|'tag'|'gallery'|'image'|'group'} opts.kind
    * @param {(page: number, perPage: number) => Promise<{count: number, items: Array}>} opts.fetchPage
    * @param {number} [opts.perPage=40]
    * @param {string} [opts.emptyText]
@@ -36,6 +36,8 @@ export class Grid {
     this.page = 0;
     this.count = null;
     this.loaded = 0;
+    /** Every item loaded so far, in order (a new array per reset). */
+    this.items = [];
     this.loading = false;
     this.el.innerHTML = '';
     this.el.__last = null;
@@ -69,13 +71,14 @@ export class Grid {
       this.count = res.count;
       if (this.opts.onCount) this.opts.onCount(res.count);
       const render = RENDERERS[this.kind];
-      const select = (item) => openItem(this.kind, item);
+      const select = (item) => this.open(item);
       for (const item of res.items) {
         const card = render(item, select);
         card.__onFocus = () => this.onCardFocus(card);
         this.el.appendChild(card);
       }
       this.loaded += res.items.length;
+      this.items = this.items.concat(res.items);
       if (res.items.length === 0) this.count = this.loaded; // guard against bad counts
       if (this.loaded === 0) {
         this.el.classList.add('is-empty');
@@ -95,6 +98,25 @@ export class Grid {
     } finally {
       if (gen === this.generation) this.loading = false;
     }
+  }
+
+  /**
+   * Opens an item. Images open in the viewer with the whole grid as its
+   * playlist: the viewer gets the items loaded so far plus a way to fetch
+   * further pages, so Left/Right can run through the entire result.
+   */
+  open(item) {
+    if (this.kind !== 'image') {
+      openItem(this.kind, item);
+      return;
+    }
+    openItem('image', item, {
+      items: this.items.slice(),
+      index: this.items.indexOf(item),
+      count: this.count,
+      perPage: this.perPage,
+      fetchPage: this.fetchPage,
+    });
   }
 
   /** Triggers the next page when the highlight nears the end. */

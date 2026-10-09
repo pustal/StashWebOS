@@ -17,7 +17,9 @@
  *   vertical scrolling is done on the window, using the `data-scroll` hints
  *   of the screen (see {@link ensureVisible}).
  * - Zones (`nav-zone` class): Up/Down stay inside the current zone, so the
- *   sidebar and the content area are only crossed with Left/Right.
+ *   sidebar and the content area are only crossed with Left/Right. Within
+ *   a zone, Left/Right only reach elements on the same line.
+ * - Up/Down go to the nearest row first, then the best-aligned element in it.
  * - `__onSelect` (set via h(..., { onSelect })) runs on OK / click.
  * - `__onFocus` runs whenever the element gains the highlight.
  */
@@ -181,6 +183,24 @@ function score(from, to, dir) {
   return primary + gapAcross * 2 + Math.abs(to.cx - from.cx) * 0.3;
 }
 
+/** Distance (px) between rows that still counts as "the same row". */
+const ROW_TOLERANCE = 24;
+
+/** Vertical overlap (px) of two boxes; <= 0 when they don't share a line. */
+function overlapY(a, b) {
+  return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+}
+
+/** Empty space between two boxes along the direction of travel. */
+function edgeGap(from, to, dir) {
+  switch (dir) {
+    case 'down': return Math.max(0, to.top - from.bottom);
+    case 'up': return Math.max(0, from.top - to.bottom);
+    case 'right': return Math.max(0, to.left - from.right);
+    default: return Math.max(0, from.left - to.right);
+  }
+}
+
 /** Innermost nav-group of `el` that does not contain `from`. */
 function enteredGroup(el, from) {
   let p = el.parentElement;
@@ -208,16 +228,38 @@ export function move(dir) {
   const from = box(current);
   // Up/Down never leave the current zone (e.g. from the content into the
   // sidebar); only Left/Right cross between zones.
-  const zone = dir === 'up' || dir === 'down' ? current.closest('.nav-zone') : null;
-  let best = null;
-  let bestScore = Infinity;
+  const currentZone = current.closest('.nav-zone');
+  const zone = dir === 'up' || dir === 'down' ? currentZone : null;
+  const scored = [];
   for (const el of candidates()) {
     if (el === current) continue;
     if (zone && !zone.contains(el)) continue;
-    const s = score(from, box(el), dir);
-    if (s < bestScore) {
-      bestScore = s;
-      best = el;
+    const to = box(el);
+    // Left/Right stay on the same line within a zone: a one-card row must
+    // not jump into the next row. Crossing into another zone (the sidebar)
+    // is allowed from any height.
+    if ((dir === 'left' || dir === 'right') && overlapY(from, to) <= 0 && currentZone && currentZone.contains(el)) continue;
+    const s = score(from, to, dir);
+    if (s !== Infinity) scored.push({ el, s, gap: edgeGap(from, to, dir) });
+  }
+  if (!scored.length) return false;
+
+  // Up/Down: only consider the nearest row first, then pick the best aligned
+  // element in it. Without this, a far-away element that happens to be in
+  // line wins over the row right below (e.g. a button in a header column
+  // skipping a left-aligned chip row).
+  let pool = scored;
+  if (dir === 'up' || dir === 'down') {
+    let minGap = Infinity;
+    for (const c of scored) minGap = Math.min(minGap, c.gap);
+    pool = scored.filter((c) => c.gap <= minGap + ROW_TOLERANCE);
+  }
+  let best = null;
+  let bestScore = Infinity;
+  for (const c of pool) {
+    if (c.s < bestScore) {
+      bestScore = c.s;
+      best = c.el;
     }
   }
   if (!best) return false;

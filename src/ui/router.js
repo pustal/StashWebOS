@@ -100,6 +100,20 @@ export class Router {
     this.attach(screen);
   }
 
+  /**
+   * Swaps the top screen for another without going back (e.g. the player
+   * moving on to the next scene in a queue).
+   */
+  replaceTop(screen) {
+    const e = this.stack.pop();
+    if (e) {
+      e.screen.onHide();
+      e.screen.destroy();
+    }
+    this.stack.push({ screen, focus: null, scrollY: 0 });
+    this.attach(screen);
+  }
+
   /** Replaces the whole stack with a single screen (sidebar sections). */
   reset(screen) {
     while (this.stack.length) {

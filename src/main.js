@@ -26,6 +26,9 @@ import { SearchScreen } from './screens/search.js';
 import { SettingsScreen } from './screens/settings.js';
 import { SetupScreen } from './screens/setup.js';
 import { PlayerScreen } from './screens/player.js';
+import { GalleryScreen } from './screens/gallery.js';
+import { GroupScreen } from './screens/group.js';
+import { ViewerScreen } from './screens/viewer.js';
 
 const appRoot = document.getElementById('app');
 const sidebar = new Sidebar();
@@ -55,9 +58,15 @@ registerNavigation(router, {
   studio: (item) => new EntityScreen('studio', item),
   tag: (item) => new EntityScreen('tag', item),
   player: (item, extra) => new PlayerScreen(item, extra),
+  gallery: (item) => new GalleryScreen(item),
+  group: (item) => new GroupScreen(item),
+  image: (item, extra) => new ViewerScreen(item, extra),
   'section:home': () => new HomeScreen(),
   'section:search': () => new SearchScreen(),
   'section:scenes': () => new BrowseScreen('scenes'),
+  'section:groups': () => new BrowseScreen('groups'),
+  'section:galleries': () => new BrowseScreen('galleries'),
+  'section:images': () => new BrowseScreen('images'),
   'section:performers': () => new BrowseScreen('performers'),
   'section:studios': () => new BrowseScreen('studios'),
   'section:tags': () => new BrowseScreen('tags'),

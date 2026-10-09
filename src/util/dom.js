@@ -85,6 +85,11 @@ const ICONS = {
   sort: '<path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>',
   shuffle: '<path d="M3 7h4l10 10h4M3 17h4l3-3M14 10l3-3h4M18 4l3 3-3 3M18 14l3 3-3 3"/>',
   check: '<path d="M4 12l5 5L20 6"/>',
+  images: '<rect x="3" y="5" width="15" height="13" rx="1.5"/><path d="M7 2h14v13"/><path d="M3 15l4-4 4 4 3-3 4 4"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 18l6-5 4 3 3-2 5 4"/>',
+  group: '<rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M3.5 9l1.5-5h15l-1.5 5"/><path d="M9 4l-2 5M14 4l-2 5M19 4l-2 5"/>',
+  next: '<path d="M5 4l11 8-11 8z" fill="currentColor"/><path d="M19 4v16"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="currentColor"/>',
 };
 

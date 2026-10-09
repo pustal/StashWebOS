@@ -34,7 +34,8 @@ mkdirSync('dist', { recursive: true });
 /** Copies the files that don't need bundling into dist/. */
 function copyStatic() {
   for (const f of ['index.html', 'appinfo.json']) cpSync(f, `dist/${f}`);
-  cpSync('assets/icons', 'dist/icons', { recursive: true });
+  // assets/icons/source holds the original logo; only the generated sizes ship.
+  cpSync('assets/icons', 'dist/icons', { recursive: true, filter: (src) => !/[\\/]source([\\/]|$)/.test(src) });
 }
 
 /** esbuild plugin that re-copies static files after every (re)build. */

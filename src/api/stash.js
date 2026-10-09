@@ -137,6 +137,7 @@ export async function getScene(id) {
       tags { id name image_path }
       scene_markers { id title seconds end_seconds screenshot primary_tag { id name } }
       groups { group { id name } scene_index }
+      galleries { id title image_count files { basename } folder { path } }
     }
   }`, { id });
   return data.findScene;
@@ -213,8 +214,9 @@ export async function getPerformer(id) {
   const data = await q(`query ($id: ID!) {
     findPerformer(id: $id) {
       id name disambiguation gender birthdate death_date country ethnicity height_cm
-      measurements hair_color eye_color alias_list details favorite image_path scene_count rating100
+      measurements hair_color eye_color alias_list details favorite image_path rating100
       career_start career_end
+      scene_count gallery_count image_count group_count
       tags { id name }
     }
   }`, { id });
@@ -225,7 +227,8 @@ export async function getPerformer(id) {
 export async function getStudio(id) {
   const data = await q(`query ($id: ID!) {
     findStudio(id: $id) {
-      id name details image_path scene_count favorite
+      id name details image_path favorite
+      scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
       parent_studio { id name }
       child_studios { id }
     }
@@ -237,7 +240,8 @@ export async function getStudio(id) {
 export async function getTag(id) {
   const data = await q(`query ($id: ID!) {
     findTag(id: $id) {
-      id name description aliases image_path scene_count favorite
+      id name description aliases image_path favorite
+      scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
       children { id }
     }
   }`, { id });
@@ -251,7 +255,175 @@ export function setPerformerFavorite(id, favorite) {
 }
 
 // ---------------------------------------------------------------------------
-// Filter builders (SceneFilterType fragments used across screens)
+// Galleries
+// ---------------------------------------------------------------------------
+
+const GALLERY_CARD = `
+fragment GalleryCard on Gallery {
+  id title date image_count
+  paths { cover }
+  studio { id name }
+  files { basename }
+  folder { path }
+}`;
+
+export const GALLERY_SORTS = [
+  { key: 'created_at', label: 'Recently added', direction: 'DESC' },
+  { key: 'date', label: 'Date', direction: 'DESC' },
+  { key: 'title', label: 'Title', direction: 'ASC' },
+  { key: 'images_count', label: 'Most images', direction: 'DESC' },
+  { key: 'rating', label: 'Rating', direction: 'DESC' },
+  { key: 'random', label: 'Shuffle', direction: 'ASC' },
+];
+
+/** Finds galleries (same options as {@link findScenes}; filter is a GalleryFilterType). */
+export async function findGalleries(opts) {
+  const o = opts || {};
+  const data = await q(`${GALLERY_CARD}
+    query ($filter: FindFilterType, $f: GalleryFilterType) {
+      findGalleries(filter: $filter, gallery_filter: $f) {
+        count
+        galleries { ...GalleryCard }
+      }
+    }`, {
+    filter: {
+      page: o.page || 1, per_page: o.perPage || 40, sort: o.sort, direction: o.direction, q: o.q,
+    },
+    f: o.filter || null,
+  });
+  return { count: data.findGalleries.count, items: data.findGalleries.galleries };
+}
+
+/** Gallery detail: facts, people, chapters and linked scenes. */
+export async function getGallery(id) {
+  const data = await q(`${SCENE_CARD}
+    query ($id: ID!) {
+      findGallery(id: $id) {
+        id title date details photographer rating100 image_count
+        paths { cover }
+        files { basename }
+        folder { path }
+        studio { id name image_path }
+        performers { id name image_path }
+        tags { id name }
+        chapters { id title image_index }
+        scenes { ...SceneCard }
+      }
+    }`, { id });
+  return data.findGallery;
+}
+
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+
+/**
+ * Image card + viewer data. `visual_files` tells photos (ImageFile) from
+ * animated GIFs and short clips (VideoFile).
+ */
+const IMAGE_CARD = `
+fragment ImageCard on Image {
+  id title date rating100
+  paths { thumbnail image }
+  studio { id name }
+  performers { id name }
+  galleries { id title }
+  visual_files {
+    __typename
+    ... on ImageFile { basename width height size }
+    ... on VideoFile { basename width height size format duration }
+  }
+}`;
+
+export const IMAGE_SORTS = [
+  { key: 'created_at', label: 'Recently added', direction: 'DESC' },
+  { key: 'date', label: 'Date', direction: 'DESC' },
+  { key: 'path', label: 'File name', direction: 'ASC' },
+  { key: 'rating', label: 'Rating', direction: 'DESC' },
+  { key: 'random', label: 'Shuffle', direction: 'ASC' },
+];
+
+/** Finds images (filter is an ImageFilterType). */
+export async function findImages(opts) {
+  const o = opts || {};
+  const data = await q(`${IMAGE_CARD}
+    query ($filter: FindFilterType, $f: ImageFilterType) {
+      findImages(filter: $filter, image_filter: $f) {
+        count
+        images { ...ImageCard }
+      }
+    }`, {
+    filter: {
+      page: o.page || 1, per_page: o.perPage || 40, sort: o.sort, direction: o.direction, q: o.q,
+    },
+    f: o.filter || null,
+  });
+  return { count: data.findImages.count, items: data.findImages.images };
+}
+
+// ---------------------------------------------------------------------------
+// Groups (called "movies" before Stash 0.27)
+// ---------------------------------------------------------------------------
+
+const GROUP_CARD = `
+fragment GroupCard on Group {
+  id name date duration front_image_path
+  scene_count
+  studio { id name }
+}`;
+
+export const GROUP_SORTS = [
+  { key: 'name', label: 'Name', direction: 'ASC' },
+  { key: 'date', label: 'Date', direction: 'DESC' },
+  { key: 'created_at', label: 'Recently added', direction: 'DESC' },
+  { key: 'scenes_count', label: 'Most scenes', direction: 'DESC' },
+  { key: 'rating', label: 'Rating', direction: 'DESC' },
+  { key: 'random', label: 'Shuffle', direction: 'ASC' },
+];
+
+/** Finds groups (filter is a GroupFilterType). */
+export async function findGroups(opts) {
+  const o = opts || {};
+  const data = await q(`${GROUP_CARD}
+    query ($filter: FindFilterType, $f: GroupFilterType) {
+      findGroups(filter: $filter, group_filter: $f) {
+        count
+        groups { ...GroupCard }
+      }
+    }`, {
+    filter: {
+      page: o.page || 1, per_page: o.perPage || 40, sort: o.sort, direction: o.direction, q: o.q,
+    },
+    f: o.filter || null,
+  });
+  return { count: data.findGroups.count, items: data.findGroups.groups };
+}
+
+/** Group detail, including its sub-groups. */
+export async function getGroup(id) {
+  const data = await q(`${GROUP_CARD}
+    query ($id: ID!) {
+      findGroup(id: $id) {
+        id name aliases date duration director synopsis rating100
+        front_image_path back_image_path
+        scene_count
+        studio { id name }
+        tags { id name }
+        containing_groups { group { id name } }
+        sub_groups { group { ...GroupCard } }
+      }
+    }`, { id });
+  return data.findGroup;
+}
+
+/** Scene sort used inside a group: the group's own running order. */
+export const GROUP_ORDER_SORT = { key: 'group_scene_number', label: 'Group order', direction: 'ASC' };
+
+// ---------------------------------------------------------------------------
+// Filter builders
+//
+// Scene, gallery, image and group filter types use the same field names for
+// performers, studios and tags, so these work for all four.
 // ---------------------------------------------------------------------------
 
 export const filters = {
@@ -259,12 +431,16 @@ export const filters = {
   inProgress: () => ({ resume_time: { value: 0, modifier: 'GREATER_THAN' } }),
   /** Scenes played at least once. */
   played: () => ({ play_count: { value: 0, modifier: 'GREATER_THAN' } }),
-  /** Scenes featuring a performer. */
+  /** Items featuring a performer. */
   performer: (id) => ({ performers: { value: [id], modifier: 'INCLUDES' } }),
-  /** Scenes from a studio, including its sub-studios. */
+  /** Items from a studio, including its sub-studios. */
   studio: (id) => ({ studios: { value: [id], modifier: 'INCLUDES', depth: -1 } }),
-  /** Scenes with a tag, including its child tags. */
+  /** Items with a tag, including its child tags. */
   tag: (id) => ({ tags: { value: [id], modifier: 'INCLUDES', depth: -1 } }),
+  /** Scenes in a group, including its sub-groups. */
+  group: (id) => ({ groups: { value: [id], modifier: 'INCLUDES', depth: -1 } }),
+  /** Images in a gallery. */
+  gallery: (id) => ({ galleries: { value: [id], modifier: 'INCLUDES' } }),
 };
 
 /**

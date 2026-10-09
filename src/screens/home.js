@@ -8,7 +8,9 @@ import { createRow } from '../ui/row.js';
 import { focusFirst, userActions } from '../nav/focus.js';
 import * as api from '../api/stash.js';
 import { bindImage } from '../cache/imageCache.js';
-import { ageFrom, formatDate, formatDuration, sceneTitle } from '../util/format.js';
+import {
+  ageFrom, countOf, formatDate, formatDuration, galleryTitle, sceneTitle,
+} from '../util/format.js';
 
 const ROW_SIZE = 20;
 
@@ -51,6 +53,18 @@ export class HomeScreen extends Screen {
         load: () => api.findPerformers({
           perPage: ROW_SIZE, sort: 'random', filter: { filter_favorites: true },
         }).then((r) => r.items),
+      }),
+      createRow({
+        title: 'Recent galleries',
+        kind: 'gallery',
+        onFocusItem,
+        load: () => api.findGalleries({ perPage: ROW_SIZE, sort: 'created_at', direction: 'DESC' }).then((r) => r.items),
+      }),
+      createRow({
+        title: 'Groups',
+        kind: 'group',
+        onFocusItem,
+        load: () => api.findGroups({ perPage: ROW_SIZE, sort: 'created_at', direction: 'DESC' }).then((r) => r.items),
       }),
       sceneRow('Watch again', scenes({ sort: 'last_played_at', direction: 'DESC', filter: api.filters.played() })),
       sceneRow('Something different', scenes({ sort: api.sortKey('random', this.seed) })),
@@ -118,6 +132,13 @@ export class HomeScreen extends Screen {
       meta = [age ? `${age} years` : null, item.country || null, `${item.scene_count} scenes`];
     } else if (kind === 'tag' || kind === 'studio') {
       meta = [`${item.scene_count} scenes`];
+    } else if (kind === 'gallery') {
+      title = galleryTitle(item);
+      meta = [item.studio ? item.studio.name : null, formatDate(item.date), countOf(item.image_count, 'image')];
+      image = item.paths && item.paths.cover;
+    } else if (kind === 'group') {
+      meta = [formatDate(item.date), item.duration ? formatDuration(item.duration) : null, countOf(item.scene_count, 'scene')];
+      image = item.front_image_path;
     }
 
     this.marqueeTitle.textContent = title;
@@ -128,7 +149,8 @@ export class HomeScreen extends Screen {
 
     // Backdrops are big; keep them in RAM only so they never use storage.
     this.marqueeImg.classList.remove('loaded');
-    if (image) bindImage(this.marqueeImg, image, { width: kind === 'scene' ? 960 : 480, quality: 0.8, persist: false, eager: true });
+    const wide = kind === 'scene' || kind === 'gallery';
+    if (image) bindImage(this.marqueeImg, image, { width: wide ? 960 : 480, quality: 0.8, persist: false, eager: true });
   }
 
   onHide() {

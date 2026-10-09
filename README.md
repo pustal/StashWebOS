@@ -2,15 +2,18 @@
 
 An unofficial [Stash](https://github.com/stashapp/stash) client for LG webOS TVs, made for the remote and careful with the TV's small storage.
 
-It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/damontecres/StashAppAndroidTV) and [Sinema](https://github.com/visorcraft/Sinema), and was tested against Stash v0.31.
+It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/damontecres/StashAppAndroidTV) and [Sinema](https://github.com/visorcraft/Sinema), and was tested against Stash v0.31. It needs Stash v0.27 or newer, the version that renamed movies to groups.
 
 ## Features
 
-- **Home**: Continue watching, Recently added, New releases, Favourite performers, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted.
-- **Browse**: Scenes, Performers, Studios and Tags, each with sort options (remembered per section) and filters (Unwatched, In progress, Favourites, names-only tags).
-- **Scene page**: Resume / Play from start, details, tech info, performers, studio, tags and markers. Choosing a marker starts playback at that point.
-- **Performer, studio and tag pages** list their scenes. You can mark a performer as a favourite from their page.
-- **Search** covers scenes, performers, studios and tags together.
+- **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted.
+- **Browse**: Scenes, Groups, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section) and filters (Unwatched, In progress, Favourites, names-only tags).
+- **Scene page**: Resume / Play from start, details, tech info, performers, studio, groups, galleries, tags and markers. Choosing a marker starts playback at that point.
+- **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups (empty tabs are hidden). You can mark a performer as a favourite from their page.
+- **Galleries**: cover, details, chapters (each opens the viewer at that image), performers, tags, linked scenes and the gallery's images.
+- **Groups** (Stash's former "movies"): front and back covers, synopsis, sub-groups and scenes in running order. **Play all** plays them back to back.
+- **Image viewer**: full screen, Left/Right through the whole result (further pages load as needed), OK for details, Play for a slideshow (speed in Settings). Animated GIFs keep moving and short clips play.
+- **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
   - Seek thumbnails come from Stash's sprite sheets.
@@ -30,7 +33,7 @@ This app handles images differently (see [`src/cache/imageCache.js`](src/cache/i
 3. **One entry per image.** Entries are keyed by image path *without* the `t=` buster. A newer version replaces the old one instead of sitting next to it.
 4. **A hard size limit.** Settings → Image cache → Storage limit (default 50 MB; 0 = memory only). When the limit is reached, the least recently used thumbnails are deleted. One image can never take more than a tenth of the limit.
 5. **Few writes to flash.** The "last used" time is only rewritten every few hours per image.
-6. **Large images stay in memory.** The home banner, scene backdrops and seek sprites are never stored.
+6. **Large images stay in memory.** The home banner, scene backdrops, seek sprites and full-screen photos in the image viewer are never stored. Viewer photos are scaled to the screen size first, so a 24-megapixel photo doesn't need ~100 MB of RAM to show. Grid thumbnails start from Stash's own 640 px image thumbnails, and Stash's placeholder artwork isn't downloaded at all.
 7. **Bounded memory.** The in-memory tier is a capped LRU of object URLs. Images far off screen release their pixels and reload from the cache if you scroll back.
 
 Settings also shows how much space is used, lets you clear the cache, and has a **Tag images → Names only** option that uses no storage for tags at all.
@@ -71,7 +74,7 @@ The `tv:*` scripts read the app id and version from `appinfo.json`. Set `TV_DEVI
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_0.1.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_0.2.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -97,6 +100,8 @@ Use the arrow keys, Enter for OK, Escape or Backspace for Back, and Space for pl
 
 Seek presses add up: tap Right three times and the player makes one jump when you stop.
 
+In the image viewer: Left/Right (or ⏪/⏩) go to the previous/next image, OK or Up/Down shows details, Play starts the slideshow, Pause or OK stops it, and Back closes the viewer.
+
 ## Progress tracking
 
 These rules match the other Stash TV clients:
@@ -113,7 +118,7 @@ These rules match the other Stash TV clients:
 appinfo.json          webOS app manifest
 build.mjs             esbuild bundling (target: Chromium 53)
 index.html
-assets/icons/         launcher icons and splash (scripts/make-icons.py regenerates them)
+assets/icons/         launcher icons and splash, made from source/stash-logo.jpg by scripts/make-icons.py
 scripts/serve.mjs     local static server for development
 scripts/tv.mjs        install / launch / inspect on the TV (reads appinfo.json)
 src/
@@ -127,8 +132,8 @@ src/
   nav/focus.js        spatial navigation for the D-pad and Magic Remote
   player/sources.js   choosing direct play vs transcode and fallbacks
   player/seekPreview.js  sprite-sheet seek thumbnails
-  ui/                 router, sidebar, rows, grids, cards, menus and dialogs
-  screens/            Home, Browse, Scene, Entity, Search, Settings, Setup, Player
+  ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs
+  screens/            Home, Browse, Scene, Entity, Gallery, Group, Viewer, Search, Settings, Setup, Player
   styles/app.css      all styles
 ```
 
@@ -136,8 +141,7 @@ No UI framework is used. On TV hardware, direct DOM code keeps the bundle around
 
 ## Not included yet
 
-- Galleries and images
-- Groups (movies)
+- Zooming and rotating images in the viewer
 - Editing metadata (other than performer favourites)
 - Saved filters from the Stash UI
 - Logging in with a username and password. Use an API key instead.

@@ -1,6 +1,6 @@
 /**
- * Scene detail: backdrop, title and facts, Play/Resume, performers, tags
- * and markers.
+ * Scene detail: backdrop, title and facts, Play/Resume, performers, studio,
+ * groups, galleries, tags and markers.
  */
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
@@ -11,7 +11,7 @@ import { focusFirst } from '../nav/focus.js';
 import { bindImage } from '../cache/imageCache.js';
 import * as api from '../api/stash.js';
 import {
-  formatBytes, formatDate, formatDuration, resolutionLabel, sceneTitle, stars,
+  formatBytes, formatDate, formatDuration, galleryTitle, resolutionLabel, sceneTitle, stars,
 } from '../util/format.js';
 
 export class SceneScreen extends Screen {
@@ -114,6 +114,24 @@ export class SceneScreen extends Screen {
       this.body.appendChild(h('section', { class: 'chip-section', 'data-scroll': 'align' }, [
         h('h2', { class: 'row-title' }, 'Studio'),
         h('div', { class: 'chip-list nav-group' }, [tagChip(s.studio, (x) => openItem('studio', x))]),
+      ]));
+    }
+    if (s.groups && s.groups.length) {
+      this.body.appendChild(h('section', { class: 'chip-section', 'data-scroll': 'align' }, [
+        h('h2', { class: 'row-title' }, 'Groups'),
+        h('div', { class: 'chip-list nav-group' }, s.groups.map((gs) => h('div', {
+          class: 'chip focusable',
+          onSelect: () => openItem('group', gs.group),
+        }, [gs.group.name, gs.scene_index ? h('span', { class: 'chip-hint' }, `#${gs.scene_index}`) : null]))),
+      ]));
+    }
+    if (s.galleries && s.galleries.length) {
+      this.body.appendChild(h('section', { class: 'chip-section', 'data-scroll': 'align' }, [
+        h('h2', { class: 'row-title' }, 'Galleries'),
+        h('div', { class: 'chip-list nav-group' }, s.galleries.map((g) => h('div', {
+          class: 'chip focusable',
+          onSelect: () => openItem('gallery', g),
+        }, [galleryTitle(g), h('span', { class: 'chip-hint' }, String(g.image_count))]))),
       ]));
     }
     if (s.tags.length) {

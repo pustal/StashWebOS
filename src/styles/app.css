@@ -1328,3 +1328,150 @@ body.no-sidebar .content {
   height: 16rem;
   background: linear-gradient(0deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
 }
+
+/* ------------------------------------------------------------------------ */
+/* Galleries, images and groups (0.2)                                        */
+/* ------------------------------------------------------------------------ */
+
+.ratio-4x3 { padding-top: 75%; }
+
+.row-track .card-gallery { width: 19rem; }
+.row-track .card-image { width: 13rem; }
+.row-track .card-group { width: 12.5rem; }
+
+.grid-gallery .card { width: calc(20% - 1.5rem); }
+.grid-image .card { width: calc(14.2857% - 1.5rem); margin-bottom: 1.5rem; }
+.grid-group .card { width: calc(14.2857% - 1.5rem); }
+
+.badge .badge-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: -0.15rem 0.35rem 0 0;
+}
+
+.chip-hint {
+  margin-left: 0.7rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+.chip.focused .chip-hint {
+  color: var(--brass-ink);
+}
+
+.entity-art-gallery { width: 22rem; height: 16.5rem; }
+.entity-art-gallery .thumb-img { object-position: 50% 50%; }
+.entity-art-group { width: 15rem; height: 22.5rem; }
+.entity-art-group .thumb-img { object-position: 50% 50%; }
+
+.gallery-extras {
+  margin-bottom: 1rem;
+}
+
+.marquee-group .marquee-art {
+  width: 34%;
+}
+
+/* Image viewer ----------------------------------------------------------- */
+
+.screen-viewer {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0;
+  background: #000;
+  overflow: hidden;
+}
+.viewer-img,
+.viewer-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.screen-viewer.loading .player-spinner {
+  display: block;
+}
+.viewer-top {
+  position: absolute;
+  top: 2.5rem;
+  right: 3rem;
+  display: flex;
+  align-items: center;
+}
+.viewer-counter,
+.viewer-state {
+  padding: 0.35rem 1rem;
+  border-radius: 1.2rem;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+.viewer-state:empty {
+  display: none;
+}
+.viewer-state {
+  margin-left: 0.75rem;
+  color: var(--brass);
+}
+.viewer-state .icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: -0.2rem;
+}
+.viewer-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8rem 5rem 3rem;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transition: opacity 200ms;
+}
+.screen-viewer.show-info .viewer-info {
+  opacity: 1;
+}
+.viewer-title {
+  font-family: var(--display);
+  font-size: 2.6rem;
+  line-height: 1.1;
+}
+.viewer-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 2.5rem;
+  padding: 0.6rem 1.4rem;
+  border-radius: 1.5rem;
+  background: rgba(0, 0, 0, 0.65);
+  color: #e4dce8;
+  font-size: 1.15rem;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: opacity 300ms;
+}
+.viewer-hint.hidden,
+.screen-viewer.show-info .viewer-hint {
+  opacity: 0;
+}
+
+/* Stand-in for Stash's placeholder artwork (not downloaded). */
+.thumb-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--line);
+}
+.thumb-placeholder .icon {
+  width: 35%;
+  height: 35%;
+}

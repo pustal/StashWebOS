@@ -1,5 +1,6 @@
 /**
- * Library browsers: Scenes, Performers, Studios and Tags.
+ * Library browsers: Scenes, Groups, Galleries, Images, Performers, Studios
+ * and Tags.
  *
  * One screen class driven by a config: a toolbar with a sort menu and
  * filter toggles, and a paged grid. The chosen sort is remembered per
@@ -10,6 +11,7 @@ import { h, icon } from '../util/dom.js';
 import { Grid } from '../ui/grid.js';
 import { chooseOption } from '../ui/overlay.js';
 import { focusFirst } from '../nav/focus.js';
+import { openItem } from '../ui/navigate.js';
 import * as api from '../api/stash.js';
 import { getSettings, updateSettings } from '../settings.js';
 
@@ -44,6 +46,30 @@ const CONFIGS = {
     ],
     empty: 'No scenes match. Try another filter.',
   },
+  groups: {
+    title: 'Groups',
+    kind: 'group',
+    sorts: api.GROUP_SORTS,
+    find: api.findGroups,
+    toggles: [],
+    empty: 'No groups yet. Groups (formerly movies) collect scenes into series.',
+  },
+  galleries: {
+    title: 'Galleries',
+    kind: 'gallery',
+    sorts: api.GALLERY_SORTS,
+    find: api.findGalleries,
+    toggles: [],
+    empty: 'No galleries yet.',
+  },
+  images: {
+    title: 'Images',
+    kind: 'image',
+    sorts: api.IMAGE_SORTS,
+    find: api.findImages,
+    toggles: [],
+    empty: 'No images yet.',
+  },
   performers: {
     title: 'Performers',
     kind: 'performer',
@@ -73,7 +99,7 @@ const CONFIGS = {
 };
 
 export class BrowseScreen extends Screen {
-  /** @param {'scenes'|'performers'|'studios'|'tags'} section */
+  /** @param {'scenes'|'groups'|'galleries'|'images'|'performers'|'studios'|'tags'} section */
   constructor(section) {
     super();
     this.section = section;
@@ -92,7 +118,9 @@ export class BrowseScreen extends Screen {
       const b = h('div', { class: 'button ghost toggle focusable', onSelect: () => this.toggle(t, b) }, [icon('check', 'toggle-check'), h('span', null, t.label)]);
       return b;
     });
-    const extra = section === 'tags'
+    const extra = section === 'images'
+      ? [h('div', { class: 'button ghost focusable', onSelect: () => this.slideshow() }, [icon('play'), h('span', null, 'Slideshow')])]
+      : section === 'tags'
       ? [h('div', {
         class: 'button ghost toggle focusable' + (getSettings().showTagImages ? '' : ' on'),
         onSelect: (b) => {
@@ -158,6 +186,15 @@ export class BrowseScreen extends Screen {
     this.activeToggles[t.id] = !this.activeToggles[t.id];
     button.classList.toggle('on', this.activeToggles[t.id]);
     this.reload();
+  }
+
+  /** Starts a slideshow over the current image results. */
+  slideshow() {
+    const g = this.grid;
+    if (!g.loaded) return;
+    openItem('image', null, {
+      items: g.items.slice(), index: 0, count: g.count, perPage: g.perPage, fetchPage: g.fetchPage, slideshow: true,
+    });
   }
 
   focusDefault() {

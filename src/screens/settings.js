@@ -106,6 +106,8 @@ export class SettingsScreen extends Screen {
         this.choice('Seek thumbnails', 'seekPreview',
           [{ value: true, label: 'On' }, { value: false, label: 'Off' }],
           'Preview frames while seeking. Kept in memory only.'),
+        this.choice('Slideshow speed', 'slideshowSeconds',
+          [3, 5, 8, 12, 20].map((n) => ({ value: n, label: `${n} seconds per image` }))),
         this.choice('Save progress to Stash', 'trackActivity',
           [{ value: true, label: 'On' }, { value: false, label: 'Off' }],
           'Resume position and play count.'),

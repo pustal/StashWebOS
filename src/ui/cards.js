@@ -7,7 +7,9 @@
  */
 import { h, icon } from '../util/dom.js';
 import { bindImage } from '../cache/imageCache.js';
-import { formatDate, formatDuration, resolutionLabel, sceneTitle } from '../util/format.js';
+import {
+  countOf, formatDate, formatDuration, galleryTitle, imageKind, resolutionLabel, sceneTitle,
+} from '../util/format.js';
 import { getSettings, THUMB_QUALITY } from '../settings.js';
 
 /** Stored-thumbnail width and quality for a card kind. */
@@ -19,6 +21,10 @@ function thumbOpts(kind) {
     case 'studio': return { width: Math.round(q.sceneWidth * 0.8), quality: q.jpeg, alpha: true };
     case 'tag': return { width: Math.round(q.sceneWidth * 0.5), quality: q.jpeg, alpha: true };
     case 'avatar': return { width: 160, quality: q.jpeg };
+    case 'gallery': return { width: q.sceneWidth, quality: q.jpeg };
+    // Stash already serves image thumbnails at 640px; ours are smaller still.
+    case 'image': return { width: Math.round(q.sceneWidth * 0.8), quality: q.jpeg };
+    case 'group': return { width: Math.round(q.sceneWidth * 0.7), quality: q.jpeg };
     default: return { width: q.sceneWidth, quality: q.jpeg };
   }
 }
@@ -132,6 +138,66 @@ export function markerCard(m, onSelect) {
   return card;
 }
 
+/**
+ * False for Stash's built-in placeholder images (URLs with default=true),
+ * which are not worth downloading or storing.
+ */
+export function hasRealImage(url) {
+  return !!url && !/[?&]default=true/.test(url);
+}
+
+/** Gallery card: cover, image count, title, studio and date. */
+export function galleryCard(g, onSelect) {
+  const sub = [g.studio ? g.studio.name : null, formatDate(g.date)].filter(Boolean);
+  const card = h('div', { class: 'card card-gallery focusable', onSelect: () => onSelect(g) }, [
+    h('div', { class: 'thumb ratio-4x3' }, [
+      stashImage(g.paths && g.paths.cover, 'gallery'),
+      h('span', { class: 'badge badge-duration' }, [icon('images', 'badge-icon'), String(g.image_count || 0)]),
+    ]),
+    h('div', { class: 'card-text' }, [
+      h('div', { class: 'card-title' }, galleryTitle(g)),
+      sub.length ? h('div', { class: 'card-sub' }, sub.map((x) => h('span', null, x))) : null,
+    ]),
+  ]);
+  card.__item = g;
+  card.__kind = 'gallery';
+  return card;
+}
+
+/**
+ * Image card: a square thumbnail only (photos speak for themselves), with a
+ * badge for animated GIFs and clips.
+ */
+export function imageCard(img, onSelect) {
+  const kind = imageKind(img);
+  const card = h('div', { class: 'card card-image focusable', onSelect: () => onSelect(img) }, [
+    h('div', { class: 'thumb ratio-1x1' }, [
+      stashImage(img.paths && img.paths.thumbnail, 'image'),
+      kind !== 'photo' ? h('span', { class: 'badge badge-res' }, kind === 'gif' ? 'GIF' : 'Clip') : null,
+    ]),
+  ]);
+  card.__item = img;
+  card.__kind = 'image';
+  return card;
+}
+
+/** Group card: front cover (poster shape), name and scene count. */
+export function groupCard(g, onSelect) {
+  const sub = [countOf(g.scene_count, 'scene'), formatDate(g.date)].filter(Boolean);
+  const card = h('div', { class: 'card card-group focusable', onSelect: () => onSelect(g) }, [
+    h('div', { class: 'thumb ratio-2x3' }, hasRealImage(g.front_image_path)
+      ? stashImage(g.front_image_path, 'group')
+      : h('div', { class: 'thumb-placeholder' }, icon('group'))),
+    h('div', { class: 'card-text' }, [
+      h('div', { class: 'card-title' }, g.name),
+      h('div', { class: 'card-sub' }, sub.map((x) => h('span', null, x))),
+    ]),
+  ]);
+  card.__item = g;
+  card.__kind = 'group';
+  return card;
+}
+
 /** Small round avatar chip used for performers on the scene screen. */
 export function personChip(p, onSelect) {
   return h('div', { class: 'chip chip-person focusable', onSelect: () => onSelect(p) }, [
@@ -150,10 +216,15 @@ function countLabel(n) {
   return n === 1 ? '1 scene' : `${n} scenes`;
 }
 
+/** Thumbnail shape per card kind, for skeletons. */
+const SKELETON_RATIO = {
+  performer: 'ratio-2x3', group: 'ratio-2x3', tag: 'ratio-1x1', image: 'ratio-1x1', gallery: 'ratio-4x3',
+};
+
 /** Placeholder card shown while a row/grid page is loading. */
 export function skeletonCard(kind) {
   return h('div', { class: `card card-${kind} skeleton` }, [
-    h('div', { class: `thumb ${kind === 'performer' ? 'ratio-2x3' : kind === 'tag' ? 'ratio-1x1' : 'ratio-16x9'}` }),
+    h('div', { class: `thumb ${SKELETON_RATIO[kind] || 'ratio-16x9'}` }),
     h('div', { class: 'card-text' }, [h('div', { class: 'skeleton-line' }), h('div', { class: 'skeleton-line short' })]),
   ]);
 }
@@ -165,4 +236,7 @@ export const RENDERERS = {
   studio: studioCard,
   tag: tagCard,
   marker: markerCard,
+  gallery: galleryCard,
+  image: imageCard,
+  group: groupCard,
 };

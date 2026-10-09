@@ -11,7 +11,7 @@ import { openItem } from './navigate.js';
  * Creates a row.
  * @param {Object} opts
  * @param {string} opts.title
- * @param {'scene'|'performer'|'studio'|'tag'|'marker'} opts.kind
+ * @param {'scene'|'performer'|'studio'|'tag'|'marker'|'gallery'|'image'|'group'} opts.kind
  * @param {() => Promise<Array>} [opts.load]  async loader; or pass `items`
  * @param {Array} [opts.items]
  * @param {(item: Object) => void} [opts.onSelect] default: open the item
@@ -28,10 +28,15 @@ export function createRow(opts) {
     h('h2', { class: 'row-title' }, opts.title),
     h('div', { class: 'row-viewport' }, track),
   ]);
-  const select = opts.onSelect || ((item) => openItem(kind, item));
   const render = RENDERERS[kind];
+  /** Items currently shown, so the image viewer can step through the row. */
+  let shown = [];
+  const select = opts.onSelect || ((item) => (kind === 'image'
+    ? openItem('image', item, { items: shown, index: shown.indexOf(item) })
+    : openItem(kind, item)));
 
   const fill = (items) => {
+    shown = items;
     track.innerHTML = '';
     if (!items.length) {
       if (opts.hideWhenEmpty !== false) el.style.display = 'none';

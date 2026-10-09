@@ -10,6 +10,10 @@
  * - Channel up/down: next/previous marker
  * - Back: hide the controls, or leave the player (progress is saved)
  *
+ * Queue: when opened with `queue` (e.g. a group's Play all), the next scene
+ * starts automatically a few seconds after one ends, and a Next button
+ * appears in the controls.
+ *
  * Progress is saved to Stash with the same rules as other Stash TV clients:
  * nothing under 5 s watched; within the last 30 s the resume point is
  * cleared; play count goes up once per viewing after Stash's
@@ -35,13 +39,17 @@ const START_TIMEOUT_MS = 20000;
 export class PlayerScreen extends Screen {
   /**
    * @param {Object} scene   full scene (from getScene) or at least {id}
-   * @param {{start?: number}} [opts]
+   * @param {{start?: number, queue?: Array<Object>, queueIndex?: number}} [opts]
+   *   queue: scenes to play in order; queueIndex: position of `scene` in it
    */
   constructor(scene, opts) {
     super();
     this.fullscreen = true;
     this.scene = scene;
     this.startAt = (opts && opts.start) || 0;
+    this.queue = (opts && opts.queue) || null;
+    this.queueIndex = (opts && opts.queueIndex) || 0;
+    this.nextTimer = null;
     this.el.classList.add('screen-player', 'no-scroll');
 
     this.sources = [];
@@ -102,6 +110,7 @@ export class PlayerScreen extends Screen {
       this.markersButton = this.ctrl('markers', 'Markers', () => this.pickMarker()),
       this.captionsButton = this.ctrl('captions', 'Subtitles', () => this.pickSubtitles()),
       this.ctrl('stream', 'Source', () => this.pickSource()),
+      this.nextScene() ? this.ctrl('next', 'Next', () => this.playNext()) : null,
     ]);
     this.title = h('div', { class: 'player-title' }, sceneTitle(this.scene));
     this.sourceLabel = h('div', { class: 'player-source' });
@@ -198,6 +207,7 @@ export class PlayerScreen extends Screen {
     clearTimeout(this.hideTimer);
     clearTimeout(this.seekTimer);
     clearTimeout(this.startTimer);
+    clearTimeout(this.nextTimer);
     // Release the hardware decoder right away; TVs only have one or two.
     this.video.pause();
     this.video.removeAttribute('src');
@@ -430,7 +440,28 @@ export class PlayerScreen extends Screen {
   onEnded() {
     this.countPlay(true);
     this.saveProgress(true, true);
+    const next = this.nextScene();
+    if (next) {
+      toast(`Up next: ${sceneTitle(next)}`);
+      this.nextTimer = setTimeout(() => this.playNext(), 4000);
+      return;
+    }
     this.showControls(true);
+  }
+
+  /** The scene after this one in the queue, if any. */
+  nextScene() {
+    return this.queue ? this.queue[this.queueIndex + 1] || null : null;
+  }
+
+  /** Replaces this player with one for the next queued scene. */
+  playNext() {
+    clearTimeout(this.nextTimer);
+    const next = this.nextScene();
+    if (!next || this.destroyed) return;
+    this.router.replaceTop(new PlayerScreen(next, {
+      start: 0, queue: this.queue, queueIndex: this.queueIndex + 1,
+    }));
   }
 
   onTime() {
