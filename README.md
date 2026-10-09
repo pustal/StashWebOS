@@ -33,7 +33,8 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - library folders (add one by browsing the server's folders, choose videos/images, remove), transcode sizes, hardware acceleration and parallel tasks
   - plugins: turn on or off, change their settings, run their tasks, install or update plugin packages
   - security: set, change or remove the username and password (the TV signs in again by itself), make a new API key
-  - more server settings: paths and files (folders can be browsed), previews and sprites, the web interface's options, DLNA (settings, start/stop now), scraping, log settings and a log viewer, database backup and optimise, session length. These panels are built from Stash's schema, so options added in newer Stash versions show up too.
+  - more server settings: paths and files (folders can be browsed), previews and sprites, the web interface's options, DLNA (settings, start/stop now), scraping, log settings and a log viewer, database backup and optimise, session length. These panels are built from Stash's schema, so options added in newer Stash versions show up too; grouped options (such as the web UI's image lightbox) open a panel of their own.
+  - check whether a newer Stash is out
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
@@ -43,6 +44,7 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - With editing on, **Set cover** makes the frame on screen the scene's cover.
   - Saves your resume position and play count back to Stash.
 - **Magic Remote**: point and click works alongside the D-pad.
+- **New or upgraded Stash servers**: connecting to a Stash that hasn't been set up yet opens a setup panel on the TV (settings file, library folders browsed on the server, database, generated files, cache, covers), then offers a first scan. A database from an older Stash version can be upgraded from the TV too (with a backup first).
 
 ## Storage and the image cache
 
@@ -106,7 +108,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_0.9.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_0.10.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -171,7 +173,8 @@ src/
   player/seekPreview.js  sprite-sheet seek thumbnails
   ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs,
                       edit panel (editor.js), marker editor, filter panel, scraper, bulk actions,
-                      library setup and Stash server settings panels, schema-built settings (configPanel.js)
+                      library setup and Stash server settings panels, schema-built settings (configPanel.js),
+                      first-time setup and database upgrade of a Stash server (serverLifecycle.js)
   screens/            Home, Browse, Scene, Entity, Gallery, Group, Viewer, Search, Settings, Setup, Player
   styles/app.css      all styles
 ```
@@ -189,7 +192,6 @@ Stash saves filters in its web UI's format, not the format its API accepts. [`sr
 
 ## Not included yet
 
-Everything on earlier lists is now in the app. What's left is out of reach of Stash's API or doesn't fit a TV:
+Everything from earlier lists is now in the app. One thing is out of reach:
 
-- Setting options that are objects in Stash's schema from the TV (the web UI's image lightbox and "disable dropdown create" groups)
-- Restarting or shutting down Stash, and first-time setup of a new Stash server
+- Restarting, shutting down or updating Stash itself: Stash's API has no way to do that, so it's done on the server (the app can tell you when a newer version is out)

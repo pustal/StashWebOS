@@ -153,7 +153,10 @@ async function start() {
     await resume();
     openSection('home');
   } catch (err) {
-    showSetup(err.message === 'not configured' ? '' : err.message);
+    let message = err.message === 'not configured' ? '' : err.message;
+    // Setup or a database upgrade is offered when Connect is pressed.
+    if (err.kind === 'setup' || err.kind === 'migrate') message += ' Press Connect to continue from the TV.';
+    showSetup(message);
   }
 }
 

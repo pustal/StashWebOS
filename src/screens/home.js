@@ -64,7 +64,7 @@ export class HomeScreen extends Screen {
     })();
     Promise.all(rows.map((r) => r.ready)).then((counts) => {
       if (counts.every((n) => !n)) {
-        this.rows.appendChild(h('div', { class: 'grid-empty' }, 'Your library is empty. Run a scan in Stash, then come back.'));
+        this.rows.appendChild(h('div', { class: 'grid-empty' }, 'Your library is empty. Scan it from Settings → Library tasks → Scan for new files (or in Stash), then come back.'));
       }
     });
   }

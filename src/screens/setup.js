@@ -5,12 +5,16 @@
  * - API key (or nothing, when Stash has no password): unchanged since 0.1.
  * - Username and password: exchanged once for the server's API key by the
  *   bundled webOS service; only the key is saved (see api/login.js).
+ *
+ * A server that isn't ready (new, or with a database from an older Stash)
+ * is set up or upgraded from here (see ui/serverLifecycle.js).
  */
 import { Screen } from '../ui/router.js';
 import { brandMark, h } from '../util/dom.js';
 import { focus } from '../nav/focus.js';
 import { getSettings } from '../settings.js';
 import { connectTo, connectWithPassword } from '../session.js';
+import { runMigration, runSetupWizard } from '../ui/serverLifecycle.js';
 
 export class SetupScreen extends Screen {
   /**
@@ -103,8 +107,18 @@ export class SetupScreen extends Screen {
       }
       this.opts.onConnected();
     } catch (err) {
-      this.setStatus(err.message, true);
       this.button.classList.remove('disabled');
+      // A new Stash, or one whose database needs upgrading: do it from here,
+      // then connect again.
+      if (err.kind === 'setup' || err.kind === 'migrate') {
+        this.setStatus(err.message, false);
+        const ready = err.kind === 'setup' ? await runSetupWizard(err.status) : await runMigration(err.status);
+        if (ready) {
+          this.submit();
+          return;
+        }
+      }
+      this.setStatus(err.message, true);
       focus(this.button);
     }
   }

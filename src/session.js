@@ -26,6 +26,23 @@ export function getServerInfo() {
 export async function connectTo(url, apiKey) {
   const normalized = normalizeServerUrl(url);
   const client = api.connect(normalized, apiKey);
+  // A new or just-upgraded Stash isn't ready for browsing yet: report that
+  // so the connection screen can offer setup or migration from the TV.
+  let status = null;
+  try {
+    status = await api.systemStatus();
+  } catch (e) {
+    // Older servers or a password-protected one: the next query tells.
+  }
+  if (status && status.status !== 'OK') {
+    const err = new Error(status.status === 'SETUP'
+      ? 'This Stash server hasn’t been set up yet.'
+      : 'This Stash server’s database needs upgrading.');
+    err.kind = status.status === 'SETUP' ? 'setup' : 'migrate';
+    err.status = status;
+    err.url = normalized;
+    throw err;
+  }
   const info = await api.serverInfo();
   const prev = getSettings().serverUrl;
   if (prev && prev !== normalized) await clearImageCache();

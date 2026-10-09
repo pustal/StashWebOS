@@ -62,6 +62,38 @@ fragment TagCard on Tag {
  * Version, library size and the Stash UI settings this app honours
  * (minimum play percent and activity tracking).
  */
+/**
+ * Whether the server is ready: status is 'OK', 'SETUP' (a new Stash that
+ * hasn't been set up yet) or 'NEEDS_MIGRATION' (the database is from an
+ * older Stash version), plus the folders setup needs.
+ */
+export async function systemStatus() {
+  const data = await q('{ systemStatus { status databaseSchema appSchema configPath databasePath workingDir homeDir os } }');
+  return data.systemStatus;
+}
+
+/**
+ * First-time setup of a new Stash server (see ui/serverLifecycle.js).
+ * @param {Object} input  SetupInput
+ */
+export function setupServer(input) {
+  return q('mutation ($i: SetupInput!) { setup(input: $i) }', { i: input });
+}
+
+/**
+ * Upgrades an older database to this Stash version (a background job).
+ * @param {string} backupPath  where to back up first ('' = Stash's default)
+ */
+export function migrateDatabase(backupPath) {
+  return q('mutation ($i: MigrateInput!) { migrate(input: $i) }', { i: { backupPath: backupPath || '' } });
+}
+
+/** The newest Stash release, if the server can find out (it asks GitHub). */
+export async function latestVersion() {
+  const data = await q('{ version { version } latestversion { version shorthash url } }');
+  return { current: data.version.version, latest: data.latestversion };
+}
+
 export async function serverInfo() {
   const data = await q(`{
     version { version }

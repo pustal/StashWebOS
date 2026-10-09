@@ -9,8 +9,11 @@
  * - lists of text (extensions, exclusions…) are typed one item per line
  * - folder settings (…Path) can also be chosen by browsing the server
  *
- * Fields the panel can't show (objects such as library folders) are left
- * out; they have their own panels or stay in Stash's web UI.
+ * - groups of settings (e.g. the web UI's image lightbox) open a panel of
+ *   their own
+ *
+ * Lists of objects (such as library folders) are left out; they have their
+ * own panels.
  */
 import { chooseOption, promptText, toast } from './overlay.js';
 import { openLinesPanel } from './panel.js';
@@ -92,27 +95,71 @@ export async function openConfigPanel(opts) {
     toast(`Couldn't read the settings: ${err.message}`, 'error');
     return;
   }
+  // Groups of settings (e.g. the web UI's image lightbox): an input object
+  // whose result is an object; their simple fields are read and edited in
+  // a panel of their own.
+  const groups = {};
+  for (const k of Object.keys(input)) {
+    if (input[k].kind === 'INPUT_OBJECT' && !input[k].list && output[k] && output[k].kind === 'OBJECT') {
+      try {
+        const [inSub, outSub] = await Promise.all([tasks.schemaFields(input[k].name), tasks.schemaFields(output[k].name)]); // eslint-disable-line no-await-in-loop
+        const subNames = Object.keys(inSub).filter((n) => outSub[n] && fieldKind(inSub[n]));
+        if (subNames.length) groups[k] = { input: inSub, names: subNames };
+      } catch (e) { /* leave this group out */ }
+    }
+  }
   // Editable (in the input type), readable (in the result) and simple.
   const names = (opts.fields || Object.keys(input))
-    .filter((k) => input[k] && output[k] && fieldKind(input[k]) && (opts.skip || []).indexOf(k) < 0);
+    .filter((k) => input[k] && output[k] && (fieldKind(input[k]) || groups[k]) && (opts.skip || []).indexOf(k) < 0);
   if (!names.length) {
     toast('This Stash version has none of these settings.');
     return;
   }
   let values;
   try {
-    values = await tasks.readConfig(opts.section, names);
+    values = await tasks.readConfig(opts.section, names.map((k) => (groups[k] ? `${k} { ${groups[k].names.join(' ')} }` : k)));
   } catch (err) {
     toast(`Couldn't read the settings: ${err.message}`, 'error');
     return;
   }
   const label = (k) => (opts.labels && opts.labels[k]) || humanize(k);
   let panel = null;
+  panel = openFieldsPanel({
+    title: opts.title,
+    subtitle: opts.subtitle || 'Settings of the Stash server, saved straight away.',
+    input,
+    names,
+    values,
+    label,
+    groups,
+    save: async (k, v) => {
+      await tasks.saveConfig(opts.section, { [k]: v });
+      values[k] = v;
+    },
+  });
+  return panel;
+}
+
+/**
+ * The lines of a settings panel (shared by top-level panels and groups).
+ * @param {Object} o
+ * @param {string} o.title
+ * @param {string} [o.subtitle]
+ * @param {Object} o.input   field types (schemaFields of the input type)
+ * @param {string[]} o.names fields to show, in order
+ * @param {Object} o.values  current values (kept up to date)
+ * @param {(k: string) => string} o.label
+ * @param {Object} [o.groups]  grouped fields: {field: {input, names}}
+ * @param {(k: string, v: *) => Promise<void>} o.save  saves one field
+ */
+function openFieldsPanel(o) {
+  const { input, names, values, label } = o;
+  const groups = o.groups || {};
+  let panel = null;
 
   const save = async (k, v) => {
     try {
-      await tasks.saveConfig(opts.section, { [k]: v });
-      values[k] = v;
+      await o.save(k, v);
       toast(`${label(k)} saved`);
     } catch (err) {
       toast(`Couldn't save: ${err.message}`, 'error');
@@ -121,6 +168,7 @@ export async function openConfigPanel(opts) {
   };
 
   const show = (k) => {
+    if (groups[k]) return `${groups[k].names.length} settings`;
     const v = values[k];
     const kind = fieldKind(input[k]);
     if (kind === 'bool') return v ? 'On' : 'Off';
@@ -131,6 +179,25 @@ export async function openConfigPanel(opts) {
   };
 
   const edit = async (k) => {
+    if (groups[k]) {
+      // The whole group is saved each time, with one field changed.
+      const g = groups[k];
+      const sub = Object.assign({}, values[k] || {});
+      openFieldsPanel({
+        title: label(k),
+        subtitle: o.subtitle,
+        input: g.input,
+        names: g.names,
+        values: sub,
+        label: humanize,
+        save: async (n, v) => {
+          const next = Object.assign({}, sub, { [n]: v });
+          await o.save(k, next);
+          sub[n] = v;
+        },
+      });
+      return;
+    }
     const f = input[k];
     const kind = fieldKind(f);
     const v = values[k];
@@ -182,10 +249,11 @@ export async function openConfigPanel(opts) {
   };
 
   panel = openLinesPanel({
-    title: opts.title,
-    subtitle: opts.subtitle || 'Settings of the Stash server, saved straight away.',
+    title: o.title,
+    subtitle: o.subtitle,
     lines: () => names.map((k) => ({
       key: k, label: label(k), value: show(k), run: () => edit(k),
     })),
   });
+  return panel;
 }
