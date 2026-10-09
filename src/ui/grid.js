@@ -1,0 +1,124 @@
+/**
+ * Paged grid of cards with load-on-demand.
+ *
+ * Pages are fetched when the highlight gets within two rows of the end, so
+ * nothing is requested that the user is not about to see. Far-away card
+ * images are released by the image cache's IntersectionObserver.
+ */
+import { h } from '../util/dom.js';
+import { RENDERERS, skeletonCard } from './cards.js';
+import { openItem } from './navigate.js';
+import { focusFirst, userActions } from '../nav/focus.js';
+
+export class Grid {
+  /**
+   * @param {Object} opts
+   * @param {'scene'|'performer'|'studio'|'tag'} opts.kind
+   * @param {(page: number, perPage: number) => Promise<{count: number, items: Array}>} opts.fetchPage
+   * @param {number} [opts.perPage=40]
+   * @param {string} [opts.emptyText]
+   * @param {(count: number) => void} [opts.onCount]
+   * @param {boolean} [opts.autofocus=true] highlight the first card when page 1 arrives
+   */
+  constructor(opts) {
+    this.opts = opts;
+    this.kind = opts.kind;
+    this.perPage = opts.perPage || 40;
+    this.el = h('div', { class: `grid grid-${this.kind} nav-group` });
+    this.generation = 0;
+    this.reset(opts.fetchPage);
+  }
+
+  /** Clears the grid and starts again with a new page source (sort/filter change). */
+  reset(fetchPage) {
+    this.fetchPage = fetchPage || this.fetchPage;
+    this.generation += 1;
+    this.page = 0;
+    this.count = null;
+    this.loaded = 0;
+    this.loading = false;
+    this.el.innerHTML = '';
+    this.el.__last = null;
+    this.el.classList.remove('is-empty');
+    return this.loadMore();
+  }
+
+  /** True when all items are loaded. */
+  get done() {
+    return this.count !== null && this.loaded >= this.count;
+  }
+
+  /** Fetches the next page and appends its cards. */
+  async loadMore() {
+    if (this.loading || this.done) return;
+    this.loading = true;
+    const gen = this.generation;
+    const actionsBefore = userActions();
+    const skeletons = [];
+    const skeletonCount = this.page === 0 ? 12 : 0;
+    for (let i = 0; i < skeletonCount; i += 1) {
+      const s = skeletonCard(this.kind);
+      skeletons.push(s);
+      this.el.appendChild(s);
+    }
+    try {
+      const res = await this.fetchPage(this.page + 1, this.perPage);
+      if (gen !== this.generation) return; // a reset happened meanwhile
+      for (const s of skeletons) this.el.removeChild(s);
+      this.page += 1;
+      this.count = res.count;
+      if (this.opts.onCount) this.opts.onCount(res.count);
+      const render = RENDERERS[this.kind];
+      const select = (item) => openItem(this.kind, item);
+      for (const item of res.items) {
+        const card = render(item, select);
+        card.__onFocus = () => this.onCardFocus(card);
+        this.el.appendChild(card);
+      }
+      this.loaded += res.items.length;
+      if (res.items.length === 0) this.count = this.loaded; // guard against bad counts
+      if (this.loaded === 0) {
+        this.el.classList.add('is-empty');
+        this.el.appendChild(h('div', { class: 'grid-empty' }, this.opts.emptyText || 'Nothing matches.'));
+      }
+      // First page arrived: move the highlight into the grid unless the
+      // user pressed something while waiting.
+      if (this.page === 1 && this.opts.autofocus !== false && this.loaded > 0) {
+        const screenEl = this.el.closest('.screen');
+        const visible = screenEl && screenEl.style.display !== 'none';
+        if (visible && userActions() === actionsBefore) focusFirst(this.el);
+      }
+    } catch (err) {
+      if (gen !== this.generation) return;
+      for (const s of skeletons) if (s.parentNode) this.el.removeChild(s);
+      this.el.appendChild(h('div', { class: 'grid-empty' }, `Couldn't load: ${err.message}`));
+    } finally {
+      if (gen === this.generation) this.loading = false;
+    }
+  }
+
+  /** Triggers the next page when the highlight nears the end. */
+  onCardFocus(card) {
+    if (this.done || this.loading) return;
+    const cards = this.el.children;
+    let index = 0;
+    for (let i = cards.length - 1; i >= 0; i -= 1) {
+      if (cards[i] === card) {
+        index = i;
+        break;
+      }
+    }
+    const perRow = this.columns();
+    if (index >= this.loaded - perRow * 2) this.loadMore();
+  }
+
+  /** Number of cards per row, measured from layout. */
+  columns() {
+    const cards = this.el.children;
+    if (cards.length < 2) return 1;
+    const top = cards[0].offsetTop;
+    let n = 0;
+    while (n < cards.length && cards[n].offsetTop === top) n += 1;
+    return n || 1;
+  }
+}

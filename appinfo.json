@@ -1,0 +1,18 @@
+{
+  "id": "org.stashwebos.app",
+  "version": "0.1.0",
+  "vendor": "Stash for webOS",
+  "type": "web",
+  "main": "index.html",
+  "title": "Stash",
+  "icon": "icons/icon.png",
+  "largeIcon": "icons/largeIcon.png",
+  "splashBackground": "icons/splash.png",
+  "bgColor": "#1d1526",
+  "iconColor": "#1d1526",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": false,
+  "uiRevision": 2,
+  "requiredACG": []
+}
