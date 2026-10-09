@@ -32,7 +32,7 @@ import { countOf } from '../util/format.js';
  * @param {string} [opts.subtitle]
  * @param {() => PanelLine[]} opts.lines  called on every redraw
  * @param {() => void} [opts.onDismiss]   Back pressed (the panel is closed)
- * @returns {{close: () => void, render: () => void, setSubtitle: (t: string) => void}}
+ * @returns {{close: () => void, render: () => void, focusLine: (key: string) => void, setSubtitle: (t: string) => void}}
  */
 export function openLinesPanel(opts) {
   const list = h('div', { class: 'menu-list scroll-y' });
@@ -72,6 +72,16 @@ export function openLinesPanel(opts) {
   return {
     close,
     render,
+    /**
+     * Puts the highlight on a line (by key), e.g. after a panel opened on
+     * top of this one closes: its redraws happened while the highlight was
+     * in the other panel.
+     */
+    focusLine: (key) => {
+      focusedKey = key;
+      first = true;
+      render();
+    },
     setSubtitle: (t) => {
       subtitle.textContent = t;
     },

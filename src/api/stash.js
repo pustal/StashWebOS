@@ -621,6 +621,55 @@ export function deleteItem(kind, id, opts) {
   return q(`mutation ($i: ${t}!) { ${m}(input: $i) }`, { i: { id } });
 }
 
+// ---------------------------------------------------------------------------
+// Several items at once
+// ---------------------------------------------------------------------------
+
+/** Bulk update mutation and input type per kind. */
+const BULK_UPDATES = {
+  scene: ['bulkSceneUpdate', 'BulkSceneUpdateInput'],
+  image: ['bulkImageUpdate', 'BulkImageUpdateInput'],
+  gallery: ['bulkGalleryUpdate', 'BulkGalleryUpdateInput'],
+  group: ['bulkGroupUpdate', 'BulkGroupUpdateInput'],
+  performer: ['bulkPerformerUpdate', 'BulkPerformerUpdateInput'],
+  studio: ['bulkStudioUpdate', 'BulkStudioUpdateInput'],
+  tag: ['bulkTagUpdate', 'BulkTagUpdateInput'],
+  marker: ['bulkSceneMarkerUpdate', 'BulkSceneMarkerUpdateInput'],
+};
+
+/**
+ * Changes several items the same way.
+ * @param {string} kind
+ * @param {string[]} ids
+ * @param {Object} patch  fields of the Bulk*UpdateInput, e.g.
+ *   { tag_ids: { ids: ['3'], mode: 'ADD' } } or { organized: true }
+ */
+export function bulkUpdate(kind, ids, patch) {
+  const [mutation, type] = BULK_UPDATES[kind];
+  return q(`mutation ($i: ${type}!) { ${mutation}(input: $i) { id } }`, { i: Object.assign({ ids }, patch) });
+}
+
+/**
+ * Deletes several items.
+ * @param {string} kind
+ * @param {string[]} ids
+ * @param {{deleteFile?: boolean}} [opts]  scenes, images, galleries: also
+ *   delete their files from disk
+ */
+export function deleteItems(kind, ids, opts) {
+  const deleteFile = !!(opts && opts.deleteFile);
+  if (kind === 'scene' || kind === 'image') {
+    const m = `${kind}sDestroy`;
+    const t = kind === 'scene' ? 'ScenesDestroyInput' : 'ImagesDestroyInput';
+    return q(`mutation ($i: ${t}!) { ${m}(input: $i) }`, { i: { ids, delete_file: deleteFile, delete_generated: true } });
+  }
+  if (kind === 'gallery') {
+    return q('mutation ($i: GalleryDestroyInput!) { galleryDestroy(input: $i) }', { i: { ids, delete_file: deleteFile, delete_generated: true } });
+  }
+  const m = kind === 'marker' ? 'sceneMarkersDestroy' : `${kind}sDestroy`;
+  return q(`mutation ($ids: [ID!]!) { ${m}(ids: $ids) }`, { ids });
+}
+
 /**
  * Adds (+1) or removes (-1) one O for a scene or image.
  * @returns {Promise<number>} the new count

@@ -190,12 +190,38 @@ function genericKind(key, type) {
     case 'HierarchicalMultiCriterionInput':
       return LIST_KINDS[key] ? 'list' : null;
     default:
-      return null;
+      // Nested filters (performers_filter…) and AND/OR/NOT, which take a
+      // whole filter of their own.
+      return /FilterType$/.test(type.name) && TYPE_SECTIONS[type.name] ? 'nested' : null;
   }
 }
 
-/** "o_counter" → "O counter". */
+/** Filter type → browse section, for nested filters (labels and lines). */
+const TYPE_SECTIONS = {
+  SceneFilterType: 'scenes',
+  PerformerFilterType: 'performers',
+  StudioFilterType: 'studios',
+  TagFilterType: 'tags',
+  GalleryFilterType: 'galleries',
+  ImageFilterType: 'images',
+  GroupFilterType: 'groups',
+  SceneMarkerFilterType: 'markers',
+};
+
+/** How the logic combinations read in menus. */
+const LOGIC_LABELS = {
+  AND: 'And also match…',
+  OR: 'Or match instead…',
+  NOT: 'But not…',
+};
+
+/** "o_counter" → "O counter"; "performers_filter" → "Performers matching…". */
 function humanize(key) {
+  if (LOGIC_LABELS[key]) return LOGIC_LABELS[key];
+  if (/_filter$/.test(key)) {
+    const base = key.replace(/_filter$/, '').replace(/_/g, ' ');
+    return `${base.charAt(0).toUpperCase()}${base.slice(1)} matching…`;
+  }
   const t = key.replace(/_/g, ' ').trim();
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -212,6 +238,11 @@ function modifierLabel(m) {
 /** Short description of any criterion: "more than 3", "contains “foo”"… */
 function describeGeneric(c) {
   if (!c || typeof c !== 'object') return String(c);
+  // A nested filter: an object of criteria rather than one criterion.
+  if (!('modifier' in c) && !('value' in c)) {
+    const n = Object.keys(c).length;
+    return n === 1 ? '1 criterion' : `${n} criteria`;
+  }
   if (c.modifier === 'IS_NULL' || c.modifier === 'NOT_NULL') return modifierLabel(c.modifier);
   const v = c.value;
   if (v && typeof v === 'object' && !Array.isArray(v)) {
@@ -240,11 +271,19 @@ function describeGeneric(c) {
  * @param {(criteria: Object) => void} opts.onChange  called with a new object after each change
  * @param {string} [opts.query]                 current text search
  * @param {(q: string) => void} [opts.onQuery]  called when the text search changes
+ * @param {string} [opts.typeName]  filter type (default: the section's)
+ * @param {string} [opts.title]     panel title (default "Filter")
+ * @param {boolean} [opts.nested]   a nested filter (performers matching…,
+ *   OR, NOT): no toolbar toggles to leave out
+ * @param {() => void} [opts.onClose]  called when Back closes the panel
  */
 export function openFilterPanel(opts) {
   let criteria = Object.assign({}, opts.criteria || {});
   let query = opts.query || '';
   const keys = SECTION_CRITERIA[opts.section] || [];
+  const typeName = opts.typeName || MODES[SECTION_MODES[opts.section]].type;
+  // Keys the toolbar toggles own (only at the top level).
+  const toggleKeys = opts.nested ? [] : TOGGLE_KEYS;
   let panel = null;
 
   /** Sets (or with `c` = null removes) one criterion and applies it. */
@@ -363,7 +402,7 @@ export function openFilterPanel(opts) {
   };
 
   /** The section's filter fields and their types (from the server). */
-  const fieldTypes = () => filterFields(MODES[SECTION_MODES[opts.section]].type);
+  const fieldTypes = () => filterFields(typeName);
 
   /**
    * Edits any criterion whose type the panel understands (see genericKind):
@@ -372,6 +411,20 @@ export function openFilterPanel(opts) {
   const editGeneric = async (key, type) => {
     const kind = genericKind(key, type);
     const label = humanize(key);
+    if (kind === 'nested') {
+      // A whole filter of its own, edited in another panel on top.
+      openFilterPanel({
+        section: TYPE_SECTIONS[type.name],
+        typeName: type.name,
+        title: label.replace(/…$/, ''),
+        nested: true,
+        criteria: criteria[key] || {},
+        onChange: (c) => set(key, Object.keys(c).length ? c : null),
+        // Back on this criterion's line (or "More criteria" if it was emptied).
+        onClose: () => panel.focusLine(criteria[key] ? `x:${key}` : 'more'),
+      });
+      return;
+    }
     if (kind === 'list') {
       const noun = LIST_KINDS[key];
       const pickers = { tag: pickTag, performer: pickPerformer, studio: pickStudio };
@@ -534,7 +587,7 @@ export function openFilterPanel(opts) {
     // Criteria the lines above don't cover (made in the web UI, or added
     // with "More criteria"): one line each, editable when the panel knows
     // the field's type, else removable.
-    const others = Object.keys(criteria).filter((k) => keys.indexOf(k) < 0 && TOGGLE_KEYS.indexOf(k) < 0);
+    const others = Object.keys(criteria).filter((k) => keys.indexOf(k) < 0 && toggleKeys.indexOf(k) < 0);
     for (const k of others) {
       out.push({
         key: `x:${k}`,
@@ -563,14 +616,17 @@ export function openFilterPanel(opts) {
           toast(`Couldn't read the filter fields: ${err.message}`, 'error');
           return;
         }
-        const shown = keys.concat(Object.keys(criteria), TOGGLE_KEYS);
-        const avail = Object.keys(types).filter((k) => shown.indexOf(k) < 0 && genericKind(k, types[k]))
+        const shown = keys.concat(Object.keys(criteria), toggleKeys);
+        const logic = ['AND', 'OR', 'NOT'];
+        const avail = Object.keys(types).filter((k) => shown.indexOf(k) < 0 && logic.indexOf(k) < 0 && genericKind(k, types[k]))
           .sort((a, b) => humanize(a).localeCompare(humanize(b)));
+        // Combinations last: "Or match instead…", "But not…".
+        for (const k of ['OR', 'NOT']) if (types[k] && shown.indexOf(k) < 0 && genericKind(k, types[k])) avail.push(k);
         const k = await chooseOption({ title: 'More criteria', options: avail.map((x) => ({ label: humanize(x), value: x })) });
         if (k) await editGeneric(k, types[k]);
       },
     });
-    if (criteriaCount(criteria) || query) {
+    if (Object.keys(criteria).some((k) => toggleKeys.indexOf(k) < 0) || query) {
       out.push({
         key: 'clear',
         label: 'Clear all',
@@ -578,7 +634,7 @@ export function openFilterPanel(opts) {
         run: () => {
           // Toolbar toggles are kept; they have their own buttons.
           const kept = {};
-          for (const k of TOGGLE_KEYS) if (criteria[k]) kept[k] = criteria[k];
+          for (const k of toggleKeys) if (criteria[k]) kept[k] = criteria[k];
           criteria = kept;
           opts.onChange(criteria);
           if (query && opts.onQuery) {
@@ -592,6 +648,6 @@ export function openFilterPanel(opts) {
     return out;
   };
 
-  panel = openLinesPanel({ title: 'Filter', lines });
+  panel = openLinesPanel({ title: opts.title || 'Filter', lines, onDismiss: opts.onClose });
   return panel;
 }

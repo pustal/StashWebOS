@@ -17,6 +17,7 @@ import {
   chooseOption, confirmDialog, promptText, toast,
 } from '../ui/overlay.js';
 import { canEdit } from '../ui/editor.js';
+import { runBulkAction } from '../ui/bulkActions.js';
 import {
   MODES, SECTION_MODES, convertFilter, deleteSavedFilter, findSavedFilters, resolveSavedFilter, saveFilter,
 } from '../api/savedFilters.js';
@@ -190,13 +191,22 @@ export class BrowseScreen extends Screen {
       emptyText: this.config.empty,
       fetchPage: (page, perPage) => this.fetch(page, perPage),
       onCount: (n) => {
-        this.countEl.textContent = n === 1 ? '1 item' : `${n.toLocaleString()} items`;
+        this.total = n;
+        this.updateCount();
       },
     });
 
+    // Selection mode (editing on): pick several cards, then act on them.
+    this.selectButton = canEdit() ? h('div', {
+      class: 'button ghost toggle focusable', onSelect: () => this.setSelecting(!this.grid.selection),
+    }, [icon('check', 'toggle-check'), h('span', null, 'Select')]) : null;
+    this.actionsButton = h('div', {
+      class: 'button primary focusable', style: { display: 'none' }, onSelect: () => this.selectionActions(),
+    }, 'Actions');
+
     this.el.appendChild(h('header', { class: 'page-header' }, [
       h('div', { class: 'page-heading' }, [h('h1', { class: 'page-title' }, this.config.title), this.countEl]),
-      h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [this.savedButton, this.filterButton, sortButton].concat(toggleButtons, extra)),
+      h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [this.actionsButton, this.savedButton, this.filterButton, sortButton].concat(toggleButtons, extra, [this.selectButton])),
     ]));
     this.el.appendChild(this.grid.el);
   }
@@ -476,5 +486,58 @@ export class BrowseScreen extends Screen {
 
   focusDefault() {
     if (!focusFirst(this.grid.el)) focusFirst(this.el);
+  }
+
+  // -------------------------------------------------------------------------
+  // Selection mode
+  // -------------------------------------------------------------------------
+
+  /** "120 items", or "3 of 120 selected" in selection mode. */
+  updateCount() {
+    const n = this.total || 0;
+    const sel = this.grid.selection;
+    this.countEl.textContent = sel
+      ? `${sel.size} of ${n.toLocaleString()} selected`
+      : (n === 1 ? '1 item' : `${n.toLocaleString()} items`);
+  }
+
+  /** Turns selection mode on or off. */
+  setSelecting(on) {
+    this.grid.setSelecting(on, () => this.updateCount());
+    if (this.selectButton) this.selectButton.classList.toggle('on', on);
+    this.actionsButton.style.display = on ? '' : 'none';
+    this.updateCount();
+    if (on) toast('Choose cards with OK, then Actions. Back ends selecting.');
+  }
+
+  /** Select all / none, and the actions for the selected items. */
+  async selectionActions() {
+    const items = this.grid.selectedItems();
+    const choice = await chooseOption({
+      title: 'Selection',
+      options: (items.length ? [{ label: `Change or delete ${items.length} selected…`, value: 'act' }] : []).concat([
+        { label: `Select all ${this.grid.loaded} loaded`, value: 'all' },
+        { label: 'Select none', value: 'none' },
+        { label: 'Stop selecting', value: 'stop' },
+      ]),
+    });
+    if (choice === 'all') this.grid.selectAll(false);
+    if (choice === 'none') this.grid.selectAll(true);
+    if (choice === 'stop') this.setSelecting(false);
+    if (choice !== 'act') return;
+    const result = await runBulkAction(this.config.kind, items);
+    if (result) {
+      this.setSelecting(false);
+      this.reload();
+    }
+  }
+
+  /** Back leaves selection mode first. */
+  onBack() {
+    if (this.grid.selection) {
+      this.setSelecting(false);
+      return true;
+    }
+    return false;
   }
 }

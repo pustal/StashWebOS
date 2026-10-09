@@ -199,21 +199,32 @@ export async function saveTaskDefaults(key, value) {
 // Scraper packages and stash-box servers
 // ---------------------------------------------------------------------------
 
-/** Installed scraper packages. */
-export async function installedScrapers() {
-  const data = await getClient().query('{ installedPackages(type: Scraper) { package_id name version sourceURL } }');
+/**
+ * Installed packages.
+ * @param {'Scraper'|'Plugin'} [type]
+ */
+export async function installedScrapers(type) {
+  const data = await getClient().query(`{ installedPackages(type: ${type || 'Scraper'}) { package_id name version sourceURL } }`);
   return (data.installedPackages || []).slice().sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Scraper package sources (e.g. the community index). */
-export async function scraperSources() {
-  const data = await getClient().query('{ configuration { general { scraperPackageSources { name url } } } }');
-  return data.configuration.general.scraperPackageSources || [];
+/**
+ * Package sources (e.g. the community index).
+ * @param {'Scraper'|'Plugin'} [type]
+ */
+export async function scraperSources(type) {
+  const field = type === 'Plugin' ? 'pluginPackageSources' : 'scraperPackageSources';
+  const data = await getClient().query(`{ configuration { general { ${field} { name url } } } }`);
+  return data.configuration.general[field] || [];
 }
 
-/** Packages a source offers. */
-export async function availableScrapers(sourceUrl) {
-  const data = await getClient().query('query ($s: String!) { availablePackages(type: Scraper, source: $s) { package_id name version sourceURL } }', { s: sourceUrl });
+/**
+ * Packages a source offers.
+ * @param {string} sourceUrl
+ * @param {'Scraper'|'Plugin'} [type]
+ */
+export async function availableScrapers(sourceUrl, type) {
+  const data = await getClient().query(`query ($s: String!) { availablePackages(type: ${type || 'Scraper'}, source: $s) { package_id name version sourceURL } }`, { s: sourceUrl });
   return (data.availablePackages || []).slice().sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -221,13 +232,14 @@ export async function availableScrapers(sourceUrl) {
  * Installs, updates or uninstalls scraper packages (a background job).
  * @param {'install'|'update'|'uninstall'} action
  * @param {Array<{package_id: string, sourceURL: string}>} [packages]  update: omit for all
+ * @param {'Scraper'|'Plugin'} [type]
  */
-export function changeScrapers(action, packages) {
+export function changeScrapers(action, packages, type) {
   const m = { install: 'installPackages', update: 'updatePackages', uninstall: 'uninstallPackages' }[action];
   const specs = packages ? packages.map((p) => ({ id: p.package_id, sourceURL: p.sourceURL })) : null;
   // Install and uninstall need a list; update takes none for "all".
   const varType = action === 'update' ? '[PackageSpecInput!]' : '[PackageSpecInput!]!';
-  return getClient().query(`mutation ($p: ${varType}) { ${m}(type: Scraper, packages: $p) }`, { p: specs });
+  return getClient().query(`mutation ($p: ${varType}) { ${m}(type: ${type || 'Scraper'}, packages: $p) }`, { p: specs });
 }
 
 /** Re-reads the scraper files (after installing or editing scrapers). */
@@ -250,4 +262,55 @@ export function saveStashBoxes(list) {
       })),
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Server settings (Stash → Settings → Library, System, Plugins)
+// ---------------------------------------------------------------------------
+
+/** The general settings this app can change. */
+export async function generalSettings() {
+  const data = await getClient().query(`{ configuration { general {
+    stashes { path excludeVideo excludeImage }
+    maxTranscodeSize maxStreamingTranscodeSize transcodeHardwareAcceleration parallelTasks
+  } } }`);
+  return data.configuration.general;
+}
+
+/**
+ * Saves general settings (only the fields given are changed).
+ * @param {Object} patch  fields of ConfigGeneralInput
+ */
+export function saveGeneral(patch) {
+  return getClient().query('mutation ($i: ConfigGeneralInput!) { configureGeneral(input: $i) { parallelTasks } }', { i: patch });
+}
+
+/**
+ * A folder on the Stash server and its sub-folders, for choosing library
+ * folders. Without `path`, the server's starting folder.
+ */
+export async function serverDirectory(path) {
+  const data = await getClient().query('query ($p: String) { directory(path: $p) { path parent directories } }', { p: path || null });
+  return data.directory;
+}
+
+/** Installed plugins with their tasks. */
+export async function plugins() {
+  const data = await getClient().query('{ plugins { id name description version enabled tasks { name description } } }');
+  return (data.plugins || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Turns a plugin on or off. */
+export function setPluginEnabled(id, enabled) {
+  return getClient().query('mutation ($m: BoolMap!) { setPluginsEnabled(enabledMap: $m) }', { m: { [id]: enabled } });
+}
+
+/** Runs one of a plugin's tasks (a background job). */
+export function runPluginTask(pluginId, taskName) {
+  return getClient().query('mutation ($p: ID!, $t: String) { runPluginTask(plugin_id: $p, task_name: $t) }', { p: pluginId, t: taskName });
+}
+
+/** Re-reads the plugin files. */
+export function reloadPlugins() {
+  return getClient().query('mutation { reloadPlugins }');
 }

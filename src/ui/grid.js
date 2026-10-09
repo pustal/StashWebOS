@@ -45,10 +45,59 @@ export class Grid {
     /** Every item loaded so far, in order (a new array per reset). */
     this.items = [];
     this.loading = false;
+    // A new result: forget what was selected in the old one.
+    if (this.selection) {
+      this.selection.clear();
+      if (this.onSelectionChange) this.onSelectionChange(0);
+    }
     this.el.innerHTML = '';
     this.el.__last = null;
     this.el.classList.remove('is-empty');
     return this.loadMore();
+  }
+
+  // -------------------------------------------------------------------------
+  // Selection (for actions on several items)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Turns selection mode on or off. While on, OK on a card selects or
+   * unselects it instead of opening it.
+   * @param {boolean} on
+   * @param {(count: number) => void} [onChange]  called when the selection changes
+   */
+  setSelecting(on, onChange) {
+    this.selection = on ? new Map() : null;
+    this.onSelectionChange = onChange || null;
+    this.el.classList.toggle('selecting', !!on);
+    for (const card of this.el.children) card.classList.remove('selected');
+  }
+
+  /** Selects or unselects one item. */
+  toggleSelected(item) {
+    const sel = this.selection;
+    if (sel.has(item.id)) sel.delete(item.id);
+    else sel.set(item.id, item);
+    for (const card of this.el.children) {
+      if (card.__item === item) card.classList.toggle('selected', sel.has(item.id));
+    }
+    if (this.onSelectionChange) this.onSelectionChange(sel.size);
+  }
+
+  /** Selects every loaded item (or, with `none`, clears the selection). */
+  selectAll(none) {
+    if (!this.selection) return;
+    this.selection.clear();
+    if (!none) for (const it of this.items) this.selection.set(it.id, it);
+    for (const card of this.el.children) {
+      if (card.__item) card.classList.toggle('selected', !none);
+    }
+    if (this.onSelectionChange) this.onSelectionChange(this.selection.size);
+  }
+
+  /** The selected items, in grid order. */
+  selectedItems() {
+    return this.selection ? Array.from(this.selection.values()) : [];
   }
 
   /** True when all items are loaded. */
@@ -81,6 +130,7 @@ export class Grid {
       for (const item of res.items) {
         const card = render(item, select);
         card.__onFocus = () => this.onCardFocus(card);
+        if (this.selection && this.selection.has(item.id)) card.classList.add('selected');
         this.el.appendChild(card);
       }
       this.loaded += res.items.length;
@@ -112,6 +162,11 @@ export class Grid {
    * further pages, so Left/Right can run through the entire result.
    */
   open(item) {
+    // In selection mode OK picks cards instead of opening them.
+    if (this.selection) {
+      this.toggleSelected(item);
+      return;
+    }
     if (this.kind !== 'image') {
       openItem(this.kind, item);
       return;

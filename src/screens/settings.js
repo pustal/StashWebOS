@@ -1,6 +1,6 @@
 /**
  * Settings: image cache (with live usage), playback, server, library,
- * library tasks (with editing on) and about.
+ * library tasks and Stash server settings (with editing on) and about.
  */
 import { Screen } from '../ui/router.js';
 import { h } from '../util/dom.js';
@@ -18,6 +18,7 @@ import {
   TASKS, jobQueue, startTask, stopAllJobs,
 } from '../api/tasks.js';
 import { openScrapers, openStashBoxes, openTaskOptions } from '../ui/libraryPanels.js';
+import { serverSettingsLines } from '../ui/serverSettings.js';
 
 /* global __APP_VERSION__ */
 
@@ -89,6 +90,11 @@ export class SettingsScreen extends Screen {
     lines.push(this.line('Task options', () => '', () => openTaskOptions(), 'What Scan and Generate do, and the sources Identify uses.'));
     lines.push(this.line('Scrapers', () => '', () => openScrapers(() => this.pollJobs()), 'Install, update or remove scrapers.'));
     lines.push(this.line('Stash-box servers', () => '', () => openStashBoxes(), 'For scraping and Identify (e.g. StashDB).'));
+    // Settings of the Stash server itself.
+    lines.push(h('h2', { class: 'settings-heading' }, 'Stash server'));
+    for (const el of serverSettingsLines((label, note, run) => this.line(label, () => '', run, note), () => this.pollJobs())) {
+      lines.push(el);
+    }
     return lines;
   }
 

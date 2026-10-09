@@ -1578,3 +1578,33 @@ body.no-sidebar .content {
 .menu-heading:first-child {
   margin-top: 0;
 }
+
+/* Selection mode in browse grids: unselected cards dim, selected ones get a
+   brass ring and a check badge. */
+.grid.selecting .card .thumb {
+  opacity: 0.55;
+  transition: opacity 120ms ease-out;
+}
+.grid.selecting .card.selected .thumb,
+.grid.selecting .card.focused .thumb {
+  opacity: 1;
+}
+.card.selected .thumb {
+  box-shadow: inset 0 0 0 0.3rem var(--brass);
+}
+.card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: var(--brass);
+  color: var(--brass-ink);
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 2.2rem;
+  text-align: center;
+  z-index: 2;
+}

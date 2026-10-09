@@ -186,13 +186,20 @@ export async function openTaskOptions() {
   });
 }
 
-/** Scrapers: installed packages, install, update, uninstall, reload. */
-export async function openScrapers(onJob) {
+/**
+ * Packages (scrapers, or plugins with `type` 'Plugin'): installed ones,
+ * install from a source, update, uninstall, reload.
+ * @param {() => void} [onJob]  called after starting a job (to show its progress)
+ * @param {'Scraper'|'Plugin'} [type]
+ */
+export async function openScrapers(onJob, type) {
+  const t = type || 'Scraper';
+  const noun = t === 'Plugin' ? 'plugin' : 'scraper';
   let installed = [];
   let panel = null;
   const refresh = async () => {
     try {
-      installed = await tasks.installedScrapers();
+      installed = await tasks.installedScrapers(t);
     } catch (err) {
       toast(`Couldn't list scrapers: ${err.message}`, 'error');
     }
@@ -201,7 +208,7 @@ export async function openScrapers(onJob) {
   await refresh();
   const run = async (action, packages, message) => {
     try {
-      await tasks.changeScrapers(action, packages);
+      await tasks.changeScrapers(action, packages, t);
       toast(message);
       if (onJob) onJob();
     } catch (err) {
@@ -209,22 +216,22 @@ export async function openScrapers(onJob) {
     }
   };
   panel = openLinesPanel({
-    title: 'Scrapers',
-    subtitle: 'Scraper packages installed in Stash.',
+    title: t === 'Plugin' ? 'Plugin packages' : 'Scrapers',
+    subtitle: `${noun.charAt(0).toUpperCase()}${noun.slice(1)} packages installed in Stash.`,
     lines: () => [
       {
         key: 'install',
-        label: 'Install a scraper…',
+        label: `Install a ${noun}…`,
         run: async () => {
           let sources;
           try {
-            sources = await tasks.scraperSources();
+            sources = await tasks.scraperSources(t);
           } catch (err) {
             toast(`Couldn't read scraper sources: ${err.message}`, 'error');
             return;
           }
           if (!sources.length) {
-            toast('No scraper sources are set up in Stash.');
+            toast(`No ${noun} sources are set up in Stash.`);
             return;
           }
           const src = sources.length === 1 ? sources[0].url
@@ -232,15 +239,15 @@ export async function openScrapers(onJob) {
           if (!src) return;
           let available;
           try {
-            toast('Loading the scraper list…');
-            available = await tasks.availableScrapers(src);
+            toast(`Loading the ${noun} list…`);
+            available = await tasks.availableScrapers(src, t);
           } catch (err) {
             toast(`Couldn't load the list: ${err.message}`, 'error');
             return;
           }
           const have = installed.map((p) => p.package_id);
           const pick = await pickBySearch({
-            title: 'Install a scraper',
+            title: `Install a ${noun}`,
             search: (text) => Promise.resolve(available
               .filter((p) => have.indexOf(p.package_id) < 0 && p.name.toLowerCase().indexOf(text.toLowerCase()) >= 0)
               .slice(0, 30)
@@ -253,16 +260,16 @@ export async function openScrapers(onJob) {
       },
       {
         key: 'update',
-        label: 'Update all scrapers',
-        run: () => run('update', null, 'Updating scrapers'),
+        label: `Update all ${noun}s`,
+        run: () => run('update', null, `Updating ${noun}s`),
       },
       {
         key: 'reload',
-        label: 'Reload scrapers',
+        label: `Reload ${noun}s`,
         run: async () => {
           try {
-            await tasks.reloadScrapers();
-            toast('Scrapers reloaded');
+            await (t === 'Plugin' ? tasks.reloadPlugins() : tasks.reloadScrapers());
+            toast(`${noun.charAt(0).toUpperCase()}${noun.slice(1)}s reloaded`);
           } catch (err) {
             toast(`Couldn't reload: ${err.message}`, 'error');
           }
