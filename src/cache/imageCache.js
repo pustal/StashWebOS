@@ -25,6 +25,11 @@
  *    hours, so browsing does not turn into a constant stream of flash writes.
  * 6. Large images (detail backdrops, sprite sheets) can be requested with
  *    `persist: false`; they live only in the RAM tier.
+ * 7. Animated images (GIF, WebP, APNG) are flattened to a still like any
+ *    other image by default. With Settings → Animated thumbnails on they are
+ *    stored as they are (up to MAX_ANIMATED_BYTES), which costs far more
+ *    space. Each entry records which form it holds, so changing the setting
+ *    refreshes only the affected images, as they are shown.
  *
  * The RAM tier is a small LRU of object URLs, also bounded in bytes, so the
  * app does not leak memory during long browsing sessions.
@@ -51,6 +56,8 @@ let dbReady = null;
 let budgetBytes = 50 * 1024 * 1024;
 let storedBytes = 0;
 let authHeaders = {};
+/** Keep animated images animated (see point 7 above). */
+let keepAnimated = false;
 
 /** RAM tier: key → { url, bytes, version }. Map keeps insertion order = LRU order. */
 const memory = new Map();
@@ -74,10 +81,12 @@ let webpSupported = null;
  * @param {Object} opts
  * @param {number} opts.budgetBytes  persistent budget; 0 disables persistence
  * @param {Object} [opts.headers]    auth headers for image requests
+ * @param {boolean} [opts.keepAnimated] store animated images as they are
  */
 export function initImageCache(opts) {
   budgetBytes = Math.max(0, opts.budgetBytes || 0);
   authHeaders = opts.headers || {};
+  keepAnimated = !!opts.keepAnimated;
   if (!dbReady) dbReady = openDb().then(scanSize).then(upgradeFormat).catch((e) => {
     console.warn('image cache: IndexedDB unavailable, using RAM only', e);
     db = null;
@@ -94,6 +103,25 @@ export function setImageAuthHeaders(headers) {
 export function setCacheBudget(bytes) {
   budgetBytes = Math.max(0, bytes);
   return (dbReady || Promise.resolve()).then(() => (budgetBytes === 0 ? clearImageCache() : evictIfNeeded()));
+}
+
+/**
+ * Switches between animated and still thumbnails. Nothing is deleted here:
+ * entries holding the other form no longer match (see {@link variantOk}) and
+ * are replaced the next time they are shown.
+ */
+export function setKeepAnimated(on) {
+  keepAnimated = !!on;
+}
+
+/**
+ * Whether a stored entry's version fits the current setting. Stored versions
+ * are the image's `t=` value plus, for animated sources, the setting the
+ * entry was made under: `|anim` (kept animated) or `|still` (flattened).
+ * Plain images have no suffix and fit either setting.
+ */
+function variantOk(stored, version) {
+  return stored === version || stored === version + (keepAnimated ? '|anim' : '|still');
 }
 
 function openDb() {
@@ -119,8 +147,10 @@ function openDb() {
  * Version of what the store holds. Bump it when stored thumbnails become
  * wrong for a new app version; the store is then emptied once.
  * 2 (0.4.0): animated images are no longer flattened to their first frame.
+ * 3 (0.5.0): animated images are flattened again unless the setting is on;
+ *    0.4.0 entries don't say which form they hold.
  */
-const CACHE_FORMAT = 2;
+const CACHE_FORMAT = 3;
 const FORMAT_KEY = 'stash.imageCacheFormat';
 
 function upgradeFormat() {
@@ -247,7 +277,7 @@ function keyFor(url, width) {
 function memoryGet(key, version) {
   const entry = memory.get(key);
   if (!entry) return null;
-  if (entry.version !== version) {
+  if (!variantOk(entry.version, version)) {
     memoryDelete(key);
     return null;
   }
@@ -360,6 +390,8 @@ function decode(blob) {
 
 /** Animated images larger than this are shown as a still to spare RAM. */
 const MAX_ANIMATED_BYTES = 8 * 1024 * 1024;
+/** How much of a GIF is scanned for a second frame. */
+const GIF_SCAN_BYTES = 2 * 1024 * 1024;
 
 /** Reads the first `max` bytes of a blob (Blob.arrayBuffer needs Chromium 76). */
 function readBytes(blob, max) {
@@ -393,7 +425,8 @@ function findAscii(bytes, text, from, to) {
 export async function isAnimated(blob) {
   const type = blob.type || '';
   if (/gif/.test(type)) {
-    const b = await readBytes(blob);
+    // The second frame almost always starts within the first few MB.
+    const b = await readBytes(blob, GIF_SCAN_BYTES);
     let frames = 0;
     for (let i = 0; i < b.length - 2; i += 1) {
       if (b[i] === 0x21 && b[i + 1] === 0xf9 && b[i + 2] === 0x04) {
@@ -421,20 +454,25 @@ export async function isAnimated(blob) {
  * @param {number} width
  * @param {boolean} alpha  keep transparency (logos, tag icons)
  * @param {number} quality JPEG/WebP quality 0–1
- * @returns {Promise<Blob>}
+ * @returns {Promise<{blob: Blob, variant: string}>} the image to keep, and
+ *   for an animated source the setting it was made under ('anim' or
+ *   'still'; an oversized image is a still even under 'anim'), else ''
  */
 async function shrink(blob, width, alpha, quality) {
-  const isSvg = /svg/.test(blob.type);
-  // SVGs are tiny already; small images that already fit are kept untouched.
-  if (isSvg) return blob;
-  // Redrawing on a canvas keeps only the first frame, so animated images
-  // (e.g. animated tag thumbnails) are kept as they are, unless huge.
-  if (blob.size <= MAX_ANIMATED_BYTES && await isAnimated(blob)) return blob;
+  // SVGs are tiny already.
+  if (/svg/.test(blob.type)) return { blob, variant: '' };
+  const animated = await isAnimated(blob);
+  // Redrawing on a canvas keeps only the first frame, so animated images are
+  // kept as they are when the setting asks for it, unless huge.
+  if (animated && keepAnimated && blob.size <= MAX_ANIMATED_BYTES) return { blob, variant: 'anim' };
+  const variant = animated ? (keepAnimated ? 'anim' : 'still') : '';
   const img = await decode(blob);
   const w = img.naturalWidth || img.width;
   const hgt = img.naturalHeight || img.height;
-  if (!w || !hgt) return blob;
-  if (w <= width && blob.size <= PASSTHROUGH_BYTES) return blob;
+  if (!w || !hgt) return { blob, variant };
+  // Small images that already fit are kept untouched (but an animated one
+  // still has to be redrawn to stop it moving).
+  if (!animated && w <= width && blob.size <= PASSTHROUGH_BYTES) return { blob, variant };
 
   const scale = Math.min(1, width / w);
   const canvas = document.createElement('canvas');
@@ -455,7 +493,9 @@ async function shrink(blob, width, alpha, quality) {
   // Free the canvas backing store right away (matters on low-RAM TVs).
   canvas.width = 0;
   canvas.height = 0;
-  return out && out.size < blob.size ? out : blob;
+  if (!out) return { blob, variant };
+  // The still is used even when larger than an animated original.
+  return { blob: animated || out.size < blob.size ? out : blob, variant };
 }
 
 /**
@@ -477,9 +517,9 @@ export function resolveImage(url, opts) {
     let previousBytes = 0;
     if (persist) {
       const rec = await dbGet(key);
-      if (rec && rec.version === version && rec.blob) {
+      if (rec && variantOk(rec.version, version) && rec.blob) {
         dbTouch(rec);
-        return memoryPut(key, version, rec.blob);
+        return memoryPut(key, rec.version, rec.blob);
       }
       if (rec) previousBytes = rec.bytes || 0; // stale version: will be replaced
     }
@@ -491,17 +531,19 @@ export function resolveImage(url, opts) {
     const type = res.headers.get('Content-Type') || '';
     if (type.indexOf('image/') !== 0) throw new Error(`not an image (${type || 'unknown type'})`);
     const original = await res.blob();
-    let small;
+    let shrunk;
     try {
-      small = await shrink(original, width, !!opts.alpha, opts.quality || 0.8);
+      shrunk = await shrink(original, width, !!opts.alpha, opts.quality || 0.8);
     } catch (e) {
       // Undecodable: show nothing rather than storing a possibly huge original.
       throw new Error('image could not be decoded');
     }
+    const small = shrunk.blob;
+    const stored = shrunk.variant ? `${version}|${shrunk.variant}` : version;
     if (persist) {
-      dbPut({ key, version, blob: small, bytes: small.size, used: Date.now() }, previousBytes);
+      dbPut({ key, version: stored, blob: small, bytes: small.size, used: Date.now() }, previousBytes);
     }
-    return memoryPut(key, version, small);
+    return memoryPut(key, stored, small);
   })();
 
   inflight.set(key, job);

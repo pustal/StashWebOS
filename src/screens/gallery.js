@@ -80,9 +80,11 @@ export class GalleryScreen extends Screen {
     ]));
   }
 
-  /** Re-renders the header after an edit and keeps the highlight on Edit. */
+  /** Re-renders the page after an edit and keeps the highlight on Edit. */
   afterEdit() {
     this.renderHeader(this.gallery);
+    // Links (performers, studio, tags, scenes) may have changed too.
+    this.renderExtras(this.gallery);
     const b = this.header.querySelector('.edit-button');
     if (b && this.isTop()) focus(b);
   }

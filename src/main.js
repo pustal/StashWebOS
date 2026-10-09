@@ -144,7 +144,7 @@ document.addEventListener('keydown', (e) => {
 
 async function start() {
   const s = getSettings();
-  await initImageCache({ budgetBytes: s.cacheBudgetMB * 1024 * 1024 });
+  await initImageCache({ budgetBytes: s.cacheBudgetMB * 1024 * 1024, keepAnimated: s.animatedThumbs });
   if (!s.serverUrl) {
     showSetup();
     return;

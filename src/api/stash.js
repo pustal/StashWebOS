@@ -137,7 +137,7 @@ export async function getScene(id) {
       studio { id name image_path }
       performers { id name disambiguation image_path favorite gender birthdate }
       tags { id name image_path }
-      scene_markers { id title seconds end_seconds screenshot primary_tag { id name } }
+      scene_markers { id title seconds end_seconds screenshot primary_tag { id name } tags { id name } }
       groups { group { id name } scene_index }
       galleries { id title image_count files { basename } folder { path } }
     }
@@ -233,6 +233,7 @@ export async function getStudio(id) {
       scene_count(depth: -1) gallery_count(depth: -1) image_count(depth: -1) group_count(depth: -1)
       parent_studio { id name }
       child_studios { id }
+      tags { id name }
     }
   }`, { id });
   return data.findStudio;
@@ -330,6 +331,7 @@ fragment ImageCard on Image {
   paths { thumbnail image }
   studio { id name }
   performers { id name }
+  tags { id name }
   galleries { id title }
   visual_files {
     __typename
@@ -493,6 +495,38 @@ export async function findMarkers(opts) {
     f: o.filter || null,
   });
   return { count: data.findSceneMarkers.count, items: data.findSceneMarkers.scene_markers };
+}
+
+/** Fields returned after creating or changing a marker (as on a scene). */
+const MARKER_FIELDS = 'id title seconds end_seconds screenshot primary_tag { id name } tags { id name }';
+
+/**
+ * Creates a marker in a scene.
+ * @param {{scene_id: string, seconds: number, primary_tag_id: string, title?: string, tag_ids?: string[]}} input
+ * @returns {Promise<Object>} the new marker
+ */
+export async function createMarker(input) {
+  const i = Object.assign({ title: '', tag_ids: [] }, input);
+  const data = await q(`mutation ($i: SceneMarkerCreateInput!) { sceneMarkerCreate(input: $i) { ${MARKER_FIELDS} } }`, { i });
+  return data.sceneMarkerCreate;
+}
+
+/**
+ * Changes a marker.
+ * @param {string} id
+ * @param {Object} patch  fields of SceneMarkerUpdateInput (title, seconds,
+ *   primary_tag_id, tag_ids…)
+ * @returns {Promise<Object>} the updated marker
+ */
+export async function updateMarker(id, patch) {
+  const data = await q(`mutation ($i: SceneMarkerUpdateInput!) { sceneMarkerUpdate(input: $i) { ${MARKER_FIELDS} } }`,
+    { i: Object.assign({ id }, patch) });
+  return data.sceneMarkerUpdate;
+}
+
+/** Deletes a marker. */
+export function deleteMarker(id) {
+  return q('mutation ($id: ID!) { sceneMarkerDestroy(id: $id) }', { id });
 }
 
 // ---------------------------------------------------------------------------

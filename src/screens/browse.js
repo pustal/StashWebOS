@@ -1,10 +1,14 @@
 /**
- * Library browsers: Scenes, Groups, Galleries, Images, Performers, Studios
- * and Tags.
+ * Library browsers: Scenes, Groups, Markers, Galleries, Images, Performers,
+ * Studios and Tags.
  *
- * One screen class driven by a config: a toolbar with a sort menu and
- * filter toggles, and a paged grid. The chosen sort is remembered per
- * section.
+ * One screen class driven by a config: a toolbar with saved filters, a
+ * filter panel, a sort menu and quick toggles, and a paged grid. The chosen
+ * sort is remembered per section.
+ *
+ * The view's criteria (`this.criteria`) are kept in Stash's saved-filter
+ * format and converted for each query (see api/savedFilters.js), so a saved
+ * filter can be opened, changed in the filter panel and saved back.
  */
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
@@ -14,8 +18,9 @@ import {
 } from '../ui/overlay.js';
 import { canEdit } from '../ui/editor.js';
 import {
-  SECTION_MODES, deleteSavedFilter, findSavedFilters, resolveSavedFilter, saveFilter,
+  MODES, SECTION_MODES, convertFilter, deleteSavedFilter, findSavedFilters, resolveSavedFilter, saveFilter,
 } from '../api/savedFilters.js';
+import { SECTION_CRITERIA, criteriaCount, openFilterPanel } from '../ui/filterPanel.js';
 import { focusFirst } from '../nav/focus.js';
 import { openItem } from '../ui/navigate.js';
 import * as api from '../api/stash.js';
@@ -127,7 +132,7 @@ const CONFIGS = {
 };
 
 export class BrowseScreen extends Screen {
-  /** @param {'scenes'|'groups'|'galleries'|'images'|'performers'|'studios'|'tags'} section */
+  /** @param {'scenes'|'groups'|'markers'|'galleries'|'images'|'performers'|'studios'|'tags'} section */
   constructor(section) {
     super();
     this.section = section;
@@ -135,6 +140,10 @@ export class BrowseScreen extends Screen {
     this.el.classList.add('screen-browse');
     this.seed = Math.floor(Math.random() * 1e8);
     this.activeToggles = {};
+    /** Filter criteria in Stash's saved-filter format (see filterPanel.js). */
+    this.criteria = {};
+    /** True when the view differs from the saved filter in use. */
+    this.dirty = false;
 
     const savedSort = loadSort(section);
     this.sort = this.config.sorts.find((s) => s.key === savedSort) || this.config.sorts[0];
@@ -166,6 +175,12 @@ export class BrowseScreen extends Screen {
       class: 'button ghost toggle focusable', style: { display: 'none' }, onSelect: () => this.pickSaved(),
     }, [icon('filter'), this.savedLabel]);
 
+    // Filter panel (rating, tags, performers…), for sections that have criteria.
+    this.filterLabel = h('span', null, 'Filter');
+    this.filterButton = SECTION_CRITERIA[section] ? h('div', {
+      class: 'button ghost toggle focusable', onSelect: () => this.openFilter(),
+    }, [icon('sliders'), this.filterLabel]) : null;
+
     this.toggleButtons = toggleButtons;
     this.grid = new Grid({
       kind: this.config.kind,
@@ -179,7 +194,7 @@ export class BrowseScreen extends Screen {
 
     this.el.appendChild(h('header', { class: 'page-header' }, [
       h('div', { class: 'page-heading' }, [h('h1', { class: 'page-title' }, this.config.title), this.countEl]),
-      h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [this.savedButton, sortButton].concat(toggleButtons, extra)),
+      h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, [this.savedButton, this.filterButton, sortButton].concat(toggleButtons, extra)),
     ]));
     this.el.appendChild(this.grid.el);
   }
@@ -195,10 +210,28 @@ export class BrowseScreen extends Screen {
     if (this.savedFilters.length || canEdit()) this.savedButton.style.display = '';
   }
 
-  /** Builds the query for one page from the saved filter, sort and toggles. */
-  fetch(page, perPage) {
+  /**
+   * The criteria in the API's format. The conversion asks the server about
+   * field types (cached), so it is done once per change, not once per page.
+   */
+  apiCriteria() {
+    const key = JSON.stringify(this.criteria);
+    if (this.converted && this.converted.key === key) return this.converted.promise;
+    const promise = Object.keys(this.criteria).length
+      ? convertFilter(MODES[SECTION_MODES[this.section]].type, this.criteria).catch((err) => {
+        toast(`Couldn't apply the filter: ${err.message}`, 'error');
+        return {};
+      })
+      : Promise.resolve({});
+    this.converted = { key, promise };
+    return promise;
+  }
+
+  /** Builds the query for one page from the criteria, saved filter, sort and toggles. */
+  async fetch(page, perPage) {
     let filter = this.config.baseFilter ? this.config.baseFilter() : null;
-    if (this.saved) filter = Object.assign({}, filter || {}, this.saved.query.filter);
+    const criteria = await this.apiCriteria();
+    if (Object.keys(criteria).length) filter = Object.assign({}, filter || {}, criteria);
     for (const t of this.config.toggles) {
       if (this.activeToggles[t.id]) filter = Object.assign({}, filter || {}, t.filter);
     }
@@ -250,23 +283,69 @@ export class BrowseScreen extends Screen {
     return undefined;
   }
 
-  /** Shows a saved filter's results (or clears it with `f` = null). */
+  /**
+   * Shows a saved filter's results (or, with `f` = null, the plain section).
+   * The filter's criteria become the view's criteria; those that match a
+   * toolbar toggle (e.g. Unwatched) switch that toggle on instead.
+   */
   applySaved(f, resolved) {
     this.saved = f ? {
       id: f.id, name: f.name, query: resolved.query, raw: f,
     } : null;
     this.sortChosen = false;
-    this.savedLabel.textContent = f ? f.name : 'Saved filters';
-    this.savedButton.classList.toggle('on', !!f);
+    this.criteria = f ? JSON.parse(JSON.stringify(f.object_filter || {})) : {};
+    this.activeToggles = {};
+    this.config.toggles.forEach((t, i) => {
+      const keys = Object.keys(t.uiFilter || {});
+      const on = keys.length > 0 && keys.every((k) => this.criteria[k]);
+      if (on) {
+        this.activeToggles[t.id] = true;
+        for (const k of keys) delete this.criteria[k];
+      }
+      this.toggleButtons[i].classList.toggle('on', on);
+    });
+    this.dirty = false;
+    this.updateLabels();
     this.reload();
   }
 
+  /** Marks the view as changed from the saved filter in use. */
+  markDirty() {
+    if (this.saved) this.dirty = true;
+    this.updateLabels();
+  }
+
+  /** Saved filter and Filter button labels. */
+  updateLabels() {
+    const f = this.saved;
+    this.savedLabel.textContent = f ? (this.dirty ? `${f.name} (changed)` : f.name) : 'Saved filters';
+    this.savedButton.classList.toggle('on', !!f);
+    if (this.filterButton) {
+      const n = criteriaCount(this.criteria);
+      this.filterLabel.textContent = n ? `Filter (${n})` : 'Filter';
+      this.filterButton.classList.toggle('on', n > 0);
+    }
+  }
+
+  /** Opens the filter panel; each change reloads the results. */
+  openFilter() {
+    openFilterPanel({
+      section: this.section,
+      criteria: this.criteria,
+      onChange: (criteria) => {
+        this.criteria = criteria;
+        this.markDirty();
+        this.reload();
+      },
+    });
+  }
+
   /**
-   * The current view as a saved filter: the sort, the active toggles and,
-   * when a saved filter is in use, its own criteria.
+   * The current view as a saved filter: the sort, the criteria (including
+   * any a saved filter brought that the TV can't edit) and the active toggles.
    */
   currentView() {
-    let objectFilter = this.saved ? Object.assign({}, this.saved.raw.object_filter || {}) : {};
+    let objectFilter = JSON.parse(JSON.stringify(this.criteria));
     for (const t of this.config.toggles) {
       if (this.activeToggles[t.id] && t.uiFilter) objectFilter = Object.assign(objectFilter, t.uiFilter);
     }
@@ -298,10 +377,7 @@ export class BrowseScreen extends Screen {
         objectFilter: view.objectFilter,
       });
       await this.refreshSaved();
-      // The new filter now describes the view: show it as the active filter
-      // and clear the toggles it absorbed.
-      this.activeToggles = {};
-      for (const b of this.toggleButtons) b.classList.remove('on');
+      // The new filter now describes the view: show it as the active filter.
       this.applySaved(saved, await resolveSavedFilter(saved));
       toast(existing ? `Updated “${name}”` : `Saved “${name}”`);
     } catch (err) {
@@ -321,7 +397,7 @@ export class BrowseScreen extends Screen {
       await this.refreshSaved();
       this.saved.name = saved.name;
       this.saved.raw = saved;
-      this.savedLabel.textContent = saved.name;
+      this.updateLabels();
       toast(`Renamed to “${saved.name}”`);
     } catch (err) {
       toast(`Couldn't rename: ${err.message}`, 'error');
@@ -369,12 +445,14 @@ export class BrowseScreen extends Screen {
     this.sortChosen = true;
     this.sortLabel.textContent = this.sort.label;
     saveSort(this.section, key);
+    this.markDirty();
     this.reload();
   }
 
   toggle(t, button) {
     this.activeToggles[t.id] = !this.activeToggles[t.id];
     button.classList.toggle('on', this.activeToggles[t.id]);
+    this.markDirty();
     this.reload();
   }
 

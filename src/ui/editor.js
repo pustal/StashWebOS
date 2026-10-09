@@ -3,11 +3,13 @@
  *
  * What can be edited (things that work well with a remote):
  * - scenes: title, rating, O-count, organized, studio, tags, performers,
- *   groups (with the scene's number in each) and galleries
- * - images: title, rating, O-count, organized
- * - galleries: title, rating, organized
- * - groups: rating
- * - performers and studios: rating, favourite
+ *   groups (with the scene's number in each), galleries and markers
+ *   (see markerEditor.js)
+ * - images: title, rating, O-count, organized, studio, performers, tags and
+ *   galleries
+ * - galleries: title, rating, organized, studio, performers, tags and scenes
+ * - groups: rating, studio and tags
+ * - performers and studios: rating, favourite and tags
  * - tags: favourite
  *
  * Every change is saved immediately (there is no separate Save step) and
@@ -22,8 +24,11 @@ import { focus, getFocused } from '../nav/focus.js';
 import { getSettings } from '../settings.js';
 import * as api from '../api/stash.js';
 import {
-  countOf, galleryTitle, imageTitle, sceneTitle, stars,
+  countOf, formatDate, formatDuration, galleryTitle, imageTitle, sceneTitle, stars,
 } from '../util/format.js';
+import {
+  addMarker, askTime, editMarker, markerName,
+} from './markerEditor.js';
 
 /** True when editing is allowed (Settings → Editing). */
 export function canEdit() {
@@ -37,12 +42,12 @@ const RATING_OPTIONS = [{ label: 'No rating', value: null }].concat(
 
 /** Field definitions per kind, in display order. */
 const FIELDS = {
-  scene: ['title', 'rating', 'o', 'organized', 'studio', 'tags', 'performers', 'groups', 'galleries'],
-  image: ['title', 'rating', 'o', 'organized'],
-  gallery: ['title', 'rating', 'organized'],
-  group: ['rating'],
-  performer: ['rating', 'favorite'],
-  studio: ['rating', 'favorite'],
+  scene: ['title', 'rating', 'o', 'organized', 'studio', 'tags', 'performers', 'groups', 'galleries', 'markers'],
+  image: ['title', 'rating', 'o', 'organized', 'studio', 'performers', 'tags', 'galleries'],
+  gallery: ['title', 'rating', 'organized', 'studio', 'performers', 'tags', 'scenes'],
+  group: ['rating', 'studio', 'tags'],
+  performer: ['rating', 'favorite', 'tags'],
+  studio: ['rating', 'favorite', 'tags'],
   tag: ['favorite'],
 };
 
@@ -155,6 +160,44 @@ export function openEditor(kind, item, onSaved, onClose) {
         id: g.id, title: g.title, files: g.files, folder: g.folder, image_count: g.image_count,
       }),
     }),
+    scenes: listAction('Scenes', 'scene', 'scenes', 'scene_ids', api.findScenes, {
+      labelOf: sceneTitle,
+      sort: 'title',
+      direction: 'ASC',
+      hintOf: (x) => formatDate(x.date) || '',
+      keep: (x) => x,
+    }),
+    markers: {
+      label: 'Markers',
+      value: () => String((item.scene_markers || []).length),
+      run: async () => {
+        const list = (item.scene_markers || []).slice().sort((a, b) => a.seconds - b.seconds);
+        const choice = await chooseOption({
+          title: 'Markers',
+          options: [{ label: 'Add a marker…', value: '__add' }].concat(list.map((m) => ({
+            label: markerName(m), hint: formatDuration(m.seconds), value: m.id,
+          }))),
+        });
+        if (choice === undefined) return;
+        const file = item.files && item.files[0];
+        const duration = file ? file.duration : 0;
+        if (choice === '__add') {
+          const sec = await askTime('Time of the new marker', 0, duration);
+          if (sec === undefined) return;
+          const m = await addMarker(item.id, sec);
+          if (!m) return;
+          item.scene_markers = (item.scene_markers || []).concat([m]);
+        } else {
+          const m = list.find((x) => x.id === choice);
+          const res = await editMarker(m, { duration });
+          if (!res.changed) return;
+          if (res.deleted) item.scene_markers = item.scene_markers.filter((x) => x.id !== m.id);
+        }
+        changed = true;
+        render();
+        if (onSaved) onSaved({ scene_markers: item.scene_markers });
+      },
+    },
     studio: {
       label: 'Studio',
       value: () => (item.studio ? item.studio.name : 'None'),

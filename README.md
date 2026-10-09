@@ -7,10 +7,10 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
 ## Features
 
 - **Home**: Continue watching, Recently added, New releases, Favourite performers, Recent galleries, Groups, Watch again, a shuffled row and Popular tags. The large banner at the top shows whatever card is highlighted. Or, under Settings → Home screen, use the front page you set up in Stash itself (its saved-filter and "recently added/released" rows).
-- **Browse**: Scenes, Groups, Markers, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), filters (Unwatched, In progress, Favourites, names-only tags) and your **saved filters** from Stash, which you can also create, update, rename and delete from the TV.
-- **Markers**: browse every scene marker on its own, by date, title, scene, time or duration. Choosing one plays its scene from that point. Tag pages have a Markers tab too.
+- **Browse**: Scenes, Groups, Markers, Galleries, Images, Performers, Studios and Tags, each with sort options (remembered per section), quick toggles (Unwatched, In progress, Favourites, names-only tags), a **Filter** panel (rating, tags, performers, studios, organized, resolution, depending on the section) and your **saved filters** from Stash, which you can also create, update, rename and delete from the TV.
+- **Markers**: browse every scene marker on its own, by date, title, scene, time or duration. Choosing one plays its scene from that point. Tag pages have a Markers tab too. With editing on, markers can be added, changed and deleted (see Editing and Player).
 - **Scene page**: Resume / Play from start, details, tech info, performers, studio, groups, galleries, tags and markers. Choosing a marker starts playback at that point.
-- **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups, plus markers on tag pages (empty tabs are hidden). Animated tag images (GIF, WebP, APNG) stay animated. You can mark a performer as a favourite from their page.
+- **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups, plus markers on tag pages (empty tabs are hidden). Animated tag images (GIF, WebP, APNG) can stay animated: see Settings → Animated thumbnails. You can mark a performer as a favourite from their page.
 - **Galleries**: cover, details, chapters (each opens the viewer at that image), performers, tags, linked scenes and the gallery's images.
 - **Groups** (Stash's former "movies"): front and back covers, synopsis, sub-groups and scenes in running order. **Play all** plays them back to back.
 - **Image viewer**: full screen, Left/Right through the whole result (further pages load as needed), Play for a slideshow (speed in Settings). OK opens a panel with details and **Zoom in/out, Rotate, Slideshow and Edit**. When zoomed in, the arrows move around the image and Back returns to the whole image. Animated GIFs keep moving and short clips play.
@@ -18,13 +18,15 @@ It is inspired by the Android TV clients [StashAppAndroidTV](https://github.com/
   - ratings (half stars), favourites, O-count and Organized
   - titles of scenes, images and galleries
   - a scene's tags, performers, studio, galleries and groups (search-as-you-type picker; for a group you also set the scene's number in it)
+  - a scene's markers: add one at a typed time, change its title, tag, extra tags or time, or delete it
+  - links of galleries (studio, performers, tags, scenes), images (studio, performers, tags, galleries) and groups (studio, tags), and the tags of performers and studios
 
   Settings → Editing → Off hides every Edit button, for a view-only TV.
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
   - Seek thumbnails come from Stash's sprite sheets.
-  - Markers appear on the timeline and in a list, and Channel Up/Down jump between them.
+  - Markers appear on the timeline and in a list, and Channel Up/Down jump between them. With editing on, the Markers menu also adds a marker at the current time and edits markers, including moving one to the current time.
   - Subtitles, and a manual Source picker.
   - Saves your resume position and play count back to Stash.
 - **Magic Remote**: point and click works alongside the D-pad.
@@ -36,7 +38,7 @@ Android TV clients are known to fill a TV's storage with images, mostly tag and 
 This app handles images differently (see [`src/cache/imageCache.js`](src/cache/imageCache.js)):
 
 1. **No browser disk cache.** Images are fetched with `cache: 'no-store'`, so Chromium never writes them to its HTTP cache.
-2. **Shrunk before storing.** Each image is scaled on a canvas to the size it is shown at and re-encoded. A 2 MB poster becomes a ~5–15 KB thumbnail. Animated images (GIF, WebP, APNG) up to 8 MB are stored as they are, since re-encoding would keep only the first frame; larger ones are flattened to a still.
+2. **Shrunk before storing.** Each image is scaled on a canvas to the size it is shown at and re-encoded. A 2 MB poster becomes a ~5–15 KB thumbnail. Animated images (GIF, WebP, APNG) are flattened to a still too by default. Settings → Animated thumbnails → Animated stores them as they are instead (up to 8 MB each), which keeps them moving but fills the cache much faster. Changing the setting refreshes only the animated images, as they are shown.
 3. **One entry per image.** Entries are keyed by image path *without* the `t=` buster. A newer version replaces the old one instead of sitting next to it.
 4. **A hard size limit.** Settings → Image cache → Storage limit (default 50 MB; 0 = memory only). When the limit is reached, the least recently used thumbnails are deleted. One image can never take more than a tenth of the limit.
 5. **Few writes to flash.** The "last used" time is only rewritten every few hours per image.
@@ -91,7 +93,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_0.4.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_0.5.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -152,7 +154,8 @@ src/
   nav/focus.js        spatial navigation for the D-pad and Magic Remote
   player/sources.js   choosing direct play vs transcode and fallbacks
   player/seekPreview.js  sprite-sheet seek thumbnails
-  ui/                 router, sidebar, rows, grids, tabbed collections, cards, edit panel, menus and dialogs
+  ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs,
+                      edit panel (editor.js), marker editor, filter panel
   screens/            Home, Browse, Scene, Entity, Gallery, Group, Viewer, Search, Settings, Setup, Player
   styles/app.css      all styles
 ```
@@ -163,13 +166,14 @@ No UI framework is used. On TV hardware, direct DOM code keeps the package aroun
 
 Saved filters appear in two places:
 
-- **Browse screens** get a *Saved filters* button. A saved filter brings its own sort until you choose another one. The same menu can save the current view (sort and filter toggles) as a new filter, and update, rename or delete the active one. These changes are written to Stash, so the web UI and other clients see them; they are hidden when Settings → Editing is Off.
+- **Browse screens** get a *Saved filters* button. A saved filter brings its own sort until you choose another one. Its criteria show up in the Filter panel, where you can change them; the button then reads "(changed)". The same menu can save the current view (sort, criteria and toggles) as a new filter, and update, rename or delete the active one. These changes are written to Stash, so the web UI and other clients see them; they are hidden when Settings → Editing is Off.
 - **Settings → Home screen → Stash's front page** replaces this app's home rows with the front page configured in Stash (Settings → Interface).
 
-Stash saves filters in its web UI's format, not the format its API accepts. [`src/api/savedFilters.js`](src/api/savedFilters.js) converts them by asking the server for the type of each filter field, so new filter fields in future Stash versions keep working. A field the server doesn't know is skipped rather than failing the whole filter. Filters saved from the TV are written in the web UI's format, so they open normally in Stash.
+Stash saves filters in its web UI's format, not the format its API accepts. [`src/api/savedFilters.js`](src/api/savedFilters.js) converts them by asking the server for the type of each filter field, so new filter fields in future Stash versions keep working. A field the server doesn't know is skipped rather than failing the whole filter. The Filter panel keeps its criteria in that same format and converts them the same way, so filters saved from the TV open normally in Stash. Criteria the panel can't edit (made in the web UI) are kept, and listed under *Other criteria* where they can be removed.
 
 ## Not included yet
 
-- Creating or editing scene markers
-- Editing a filter's individual criteria on the TV (the TV saves its sort and toggles; build detailed filters in Stash's web UI)
-- Editing galleries' and groups' own links (performers, tags, scenes) from the TV
+- Creating new tags, performers or studios (the pickers find existing ones)
+- Excluding items in the Filter panel ("not tagged …") and editing criteria other than the ones listed above
+- Marker end times
+- Editing tag hierarchies (parent/child tags) and group hierarchies (sub-groups)

@@ -1022,6 +1022,16 @@ body.no-sidebar .content {
 .menu-list {
   max-height: calc(100vh - 10rem);
 }
+/* Destructive lines (Delete marker…, Clear all criteria). */
+.menu-item.danger .menu-label {
+  color: var(--danger);
+}
+.menu-item.danger.focused {
+  background: var(--danger);
+}
+.menu-item.danger.focused .menu-label {
+  color: var(--brass-ink);
+}
 
 .dialog-panel {
   width: 42rem;

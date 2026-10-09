@@ -45,9 +45,13 @@ export class SceneScreen extends Screen {
   async onShow() {
     if (this.needsRefresh && this.scene) {
       this.needsRefresh = false;
+      // Markers may have been added or changed in the player.
+      const markerKey = (sc) => JSON.stringify((sc.scene_markers || []).map((m) => [m.id, m.seconds, m.title, m.primary_tag && m.primary_tag.id]));
+      const before = markerKey(this.scene);
       try {
         this.scene = await api.getScene(this.sceneId);
-        this.updateActions();
+        if (markerKey(this.scene) !== before) this.render();
+        else this.updateActions();
       } catch (e) { /* keep the old data */ }
     }
   }

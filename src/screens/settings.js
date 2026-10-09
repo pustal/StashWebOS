@@ -7,7 +7,9 @@ import { chooseOption, confirmDialog, toast } from '../ui/overlay.js';
 import {
   CACHE_BUDGETS_MB, PLAYBACK_MODES, THUMB_QUALITY, TRANSCODE_RESOLUTIONS, getSettings, updateSettings,
 } from '../settings.js';
-import { cacheStats, clearImageCache, setCacheBudget } from '../cache/imageCache.js';
+import {
+  cacheStats, clearImageCache, setCacheBudget, setKeepAnimated,
+} from '../cache/imageCache.js';
 import { formatBytes } from '../util/format.js';
 import { getServerInfo } from '../session.js';
 
@@ -84,6 +86,11 @@ export class SettingsScreen extends Screen {
         this.choice('Thumbnail sharpness', 'thumbQuality',
           Object.keys(THUMB_QUALITY).map((k) => ({ value: k, label: THUMB_QUALITY[k].label })),
           'Applies to new thumbnails.'),
+        this.choice('Animated thumbnails', 'animatedThumbs', [
+          { value: false, label: 'Still', hint: 'Recommended' },
+          { value: true, label: 'Animated' },
+        ], 'Animated tag and image thumbnails (GIFs) use far more storage. Still keeps the first frame.',
+        (on) => setKeepAnimated(on)),
         this.choice('Tag images', 'showTagImages',
           [{ value: true, label: 'Show' }, { value: false, label: 'Names only' }],
           'Names only uses no storage for tags.'),
@@ -138,7 +145,7 @@ export class SettingsScreen extends Screen {
         ], 'Stash\'s front page uses the rows and saved filters set up in Stash (Settings, Interface).'),
         this.choice('Editing', 'allowEditing',
           [{ value: true, label: 'On' }, { value: false, label: 'Off (view only)' }],
-          'Ratings, favourites, O-count, tags and titles.'),
+          'Ratings, favourites, tags and other links, markers and saved filters.'),
         h('h2', { class: 'settings-heading' }, 'About'),
         h('p', { class: 'about-text' }, `Stash for webOS ${__APP_VERSION__}. An unofficial client for Stash.`),
       ]),

@@ -8,6 +8,8 @@
  * - Up/Down: show the controls
  * - Play, Pause, Stop, Rewind, Fast-forward: as labelled
  * - Channel up/down: next/previous marker
+ * - Markers button: jump to a marker, or (with editing on) add a marker at
+ *   the current time and edit or delete markers (see ui/markerEditor.js)
  * - Back: hide the controls, or leave the player (progress is saved)
  *
  * Queue: when opened with `queue` (e.g. a group's Play all), the next scene
@@ -30,6 +32,8 @@ import { getServerInfo } from '../session.js';
 import * as api from '../api/stash.js';
 import { allSources, buildSources, withStart } from '../player/sources.js';
 import { SeekPreview } from '../player/seekPreview.js';
+import { canEdit } from '../ui/editor.js';
+import { addMarker, editMarker, markerName } from '../ui/markerEditor.js';
 
 const HIDE_CONTROLS_MS = 5000;
 const SEEK_COMMIT_MS = 700;
@@ -177,8 +181,7 @@ export class PlayerScreen extends Screen {
     this.duration = (file && file.duration) || 0;
     this.title.textContent = sceneTitle(s);
     this.timeEnd.textContent = formatDuration(this.duration);
-    this.markers = (s.scene_markers || []).slice().sort((a, b) => a.seconds - b.seconds);
-    this.markersButton.style.display = this.markers.length ? '' : 'none';
+    this.setMarkers(s.scene_markers || []);
     this.captionsButton.style.display = (s.captions && s.captions.length) ? '' : 'none';
     this.drawTicks();
 
@@ -348,15 +351,53 @@ export class PlayerScreen extends Screen {
   // -------------------------------------------------------------------------
 
   markerLabel(m) {
-    return m.title || (m.primary_tag && m.primary_tag.name) || 'Marker';
+    return markerName(m);
   }
 
+  /**
+   * Stores the scene's markers in time order and updates the timeline ticks
+   * and the Markers button (shown when there are markers or editing is on,
+   * since the menu can add one).
+   */
+  setMarkers(list) {
+    this.markers = list.slice().sort((a, b) => a.seconds - b.seconds);
+    this.markersButton.style.display = this.markers.length || canEdit() ? '' : 'none';
+    this.drawTicks();
+  }
+
+  /**
+   * The Markers menu: choosing a marker jumps to it. With editing on it
+   * also offers adding a marker at the current time and editing one.
+   */
   async pickMarker() {
-    const value = await chooseOption({
-      title: 'Markers',
-      options: this.markers.map((m) => ({ label: this.markerLabel(m), hint: formatDuration(m.seconds), value: m.seconds })),
-    });
-    if (value !== undefined) this.seekTo(value);
+    const now = Math.floor(this.position());
+    const editing = canEdit();
+    const options = this.markers.map((m) => ({ label: this.markerLabel(m), hint: formatDuration(m.seconds), value: m.id }));
+    if (editing) {
+      options.unshift({ label: `Add a marker at ${formatDuration(now)}…`, value: '__add' });
+      if (this.markers.length) options.push({ label: 'Edit a marker…', value: '__edit' });
+    }
+    const value = await chooseOption({ title: 'Markers', options });
+    if (value === undefined) return;
+    if (value === '__add') {
+      const m = await addMarker(this.scene.id, now);
+      if (m) this.setMarkers(this.markers.concat([m]));
+      return;
+    }
+    if (value === '__edit') {
+      const id = await chooseOption({
+        title: 'Edit a marker',
+        options: this.markers.map((m) => ({ label: this.markerLabel(m), hint: formatDuration(m.seconds), value: m.id })),
+      });
+      const m = this.markers.find((x) => x.id === id);
+      if (!m) return;
+      const res = await editMarker(m, { now: () => this.position(), duration: this.totalDuration() });
+      if (res.deleted) this.setMarkers(this.markers.filter((x) => x.id !== m.id));
+      else if (res.changed) this.setMarkers(this.markers);
+      return;
+    }
+    const m = this.markers.find((x) => x.id === value);
+    if (m) this.seekTo(m.seconds);
   }
 
   /** Jumps to the next (+1) or previous (-1) marker. */

@@ -15,6 +15,18 @@ export function formatDuration(sec) {
   return hrs > 0 ? `${hrs}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/**
+ * Parses a time typed on the remote: "1:23:45", "12:05", "75" (seconds) or
+ * "75.5". The reverse of {@link formatDuration}.
+ * @param {string} text
+ * @returns {number|null} seconds, or null when it isn't a time
+ */
+export function parseDuration(text) {
+  const t = String(text || '').trim();
+  if (!/^\d+(\.\d+)?$|^\d+(:\d{1,2}){1,2}(\.\d+)?$/.test(t)) return null;
+  return t.split(':').reduce((acc, part) => acc * 60 + parseFloat(part), 0);
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**

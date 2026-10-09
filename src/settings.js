@@ -46,6 +46,12 @@ export const DEFAULTS = {
   cacheBudgetMB: 50,
   /** Key of THUMB_QUALITY. */
   thumbQuality: 'standard',
+  /**
+   * Keep animated thumbnails (GIF/WebP/APNG tag images and the like) moving.
+   * Off stores a still, like any other thumbnail: animated originals are
+   * often several MB each and fill the cache quickly.
+   */
+  animatedThumbs: false,
   /** Whether to show tag images at all (tag lists can be huge). */
   showTagImages: true,
   /** Hide tags with no scenes in the Tags browser. */
