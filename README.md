@@ -14,7 +14,8 @@ If you enjoy it, please consider [buying me a Ko-fi](https://ko-fi.com/pustal).
 - **Scene page**: Resume / Play from start, details, tech info, performers, studio, groups, galleries, tags and markers. Choosing a marker starts playback at that point.
 - **Performer, studio and tag pages** have tabs for their scenes, galleries, images and groups, plus markers on tag pages (empty tabs are hidden). Animated tag images (GIF, WebP, APNG) can stay animated: see Settings → Animated thumbnails. You can mark a performer as a favourite from their page.
 - **Galleries**: cover, details, chapters (each opens the viewer at that image), performers, tags, linked scenes and the gallery's images.
-- **Groups** (Stash's former "movies"): front and back covers, synopsis, sub-groups and scenes in running order. **Play all** plays them back to back.
+- **Groups** (Stash's former "movies"): front and back covers, synopsis, sub-groups and scenes in running order.
+- **Play all and Shuffle** on every scene list (the Scenes section, a group, and the Scenes tab of a performer, studio or tag): Play all plays the list back to back in its current sort, with its filters and search; Shuffle plays the same scenes in a random order. Up to 200 scenes are queued at a time.
 - **Image viewer**: full screen, Left/Right through the whole result (further pages load as needed), Play for a slideshow (speed in Settings). OK opens a panel with details and **Zoom in/out, Rotate, Slideshow and Edit**. When zoomed in, the arrows move around the image and Back returns to the whole image. Animated GIFs keep moving and short clips play.
 - **Editing** (Edit button on scene, gallery, group, performer, studio and tag pages, and in the image viewer). Every change saves straight away:
   - details: titles and names, studio codes, dates, director, photographer, descriptions (in a larger text box), links (URLs), aliases, and for performers gender, birth/death date, country and height; group length
@@ -40,7 +41,9 @@ If you enjoy it, please consider [buying me a Ko-fi](https://ko-fi.com/pustal).
 - **Player**:
   - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
   - Seek thumbnails come from Stash's sprite sheets.
-  - Markers appear on the timeline and in a list, and Channel Up/Down jump between them. With editing on, the Markers menu also adds a marker at the current time and edits markers, including moving one, or its end, to the current time. Markers with an end time show as a band on the timeline.
+  - Channel Up/Down jump a minute forward/back (presses add up, like Left/Right).
+  - When playing a list (Play all or Shuffle), **Previous** and **Next** in the controls move through it, the top shows the position ("3 of 20"), and the next scene starts by itself a few seconds after one ends.
+  - Markers appear on the timeline and in the Markers list, which jumps to one. With editing on, the Markers menu also adds a marker at the current time and edits markers, including moving one, or its end, to the current time. Markers with an end time show as a band on the timeline.
   - Subtitles, and a manual Source picker.
   - With editing on, **Set cover** makes the frame on screen the scene's cover.
   - Saves your resume position and play count back to Stash.
@@ -110,7 +113,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_1.0.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_1.1.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -132,9 +135,9 @@ Use the arrow keys, Enter for OK, Escape or Backspace for Back, and Space for pl
 | Back | Go back (Home asks before closing) | Leave the player | Hide controls |
 | Play / Pause / Stop | | As labelled | As labelled |
 | ⏪ / ⏩ | | Seek | Seek |
-| Channel up/down | | Next/previous marker | Next/previous marker |
+| Channel up/down | | Forward/back 1 minute | Forward/back 1 minute |
 
-Seek presses add up: tap Right three times and the player makes one jump when you stop.
+Seek presses add up: tap Right three times and the player makes one jump when you stop. To jump to a marker, use the Markers button in the player's controls.
 
 In the image viewer: Left/Right (or ⏪/⏩) go to the previous/next image, OK or Up/Down opens the panel (details, Zoom in/out, Rotate, Slideshow, Edit), Play starts the slideshow and Pause or OK stops it. When zoomed in, the arrows move around the image. Back closes the panel, then returns a zoomed or rotated image to normal, then closes the viewer. Rotation is only for viewing and isn't saved to Stash.
 
@@ -157,6 +160,8 @@ index.html
 assets/icons/         launcher icons and splash, made from source/stash-logo.jpg by scripts/make-icons.py
 scripts/serve.mjs     local static server for development
 scripts/tv.mjs        install / launch / inspect on the TV (reads appinfo.json)
+scripts/manifest.mjs  Homebrew Channel manifest for the built package (run by npm run package)
+homebrew/             the entry submitted to the Homebrew Channel's repository
 services/login/       webOS JS service: username/password → API key (Node.js, runs on the TV)
 src/
   main.js             entry: router, sidebar, key handling, startup
@@ -173,7 +178,8 @@ src/
   nav/focus.js        spatial navigation for the D-pad and Magic Remote
   player/sources.js   choosing direct play vs transcode and fallbacks
   player/seekPreview.js  sprite-sheet seek thumbnails
-  ui/                 router, sidebar, rows, grids, tabbed collections, cards, menus and dialogs, link dialog (QR codes),
+  ui/                 router, sidebar, rows, grids, tabbed collections, Play all / Shuffle queues (playQueue.js),
+                      cards, menus and dialogs, link dialog (QR codes),
                       edit panel (editor.js), marker editor, filter panel, scraper, bulk actions,
                       library setup and Stash server settings panels, schema-built settings (configPanel.js),
                       first-time setup and database upgrade of a Stash server (serverLifecycle.js)
