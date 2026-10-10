@@ -7,15 +7,18 @@
  *   you stop pressing), with sprite thumbnails when Stash generated them
  * - Up/Down: show the controls
  * - Play, Pause, Stop, Rewind, Fast-forward: as labelled
- * - Channel up/down: next/previous marker
+ * - Channel up/down: forward/back a minute (presses add up like Left/Right)
  * - Set cover (with editing on): the frame on screen becomes the scene's cover
  * - Markers button: jump to a marker, or (with editing on) add a marker at
  *   the current time and edit or delete markers (see ui/markerEditor.js)
+ * - Previous / Next buttons (when playing a queue): the scene before or
+ *   after this one in the list
  * - Back: hide the controls, or leave the player (progress is saved)
  *
- * Queue: when opened with `queue` (e.g. a group's Play all), the next scene
- * starts automatically a few seconds after one ends, and a Next button
- * appears in the controls.
+ * Queue: when opened with `queue` (Play all or Shuffle on a scene list, see
+ * ui/playQueue.js), the next scene starts automatically a few seconds after
+ * one ends, the controls get Previous and Next buttons, and the top shows the
+ * position in the queue ("3 of 20").
  *
  * Progress is saved to Stash with the same rules as other Stash TV clients:
  * nothing under 5 s watched; within the last 30 s the resume point is
@@ -42,6 +45,8 @@ const HIDE_CONTROLS_MS = 5000;
 const SEEK_COMMIT_MS = 700;
 const SAVE_EVERY_S = 30;
 const START_TIMEOUT_MS = 20000;
+/** Seconds Channel up/down jump forward/back. */
+const CHANNEL_SEEK_S = 60;
 
 export class PlayerScreen extends Screen {
   /**
@@ -118,13 +123,18 @@ export class PlayerScreen extends Screen {
       this.captionsButton = this.ctrl('captions', 'Subtitles', () => this.pickSubtitles()),
       this.ctrl('stream', 'Source', () => this.pickSource()),
       canEdit() ? this.ctrl('image', 'Set cover', () => this.setCover()) : null,
-      this.nextScene() ? this.ctrl('next', 'Next', () => this.playNext()) : null,
+      // Queue: both buttons, so the row keeps its layout (see queueCtrl).
+      this.queue && this.queue.length > 1 ? this.queueCtrl('prev', 'Previous', this.previousScene(), () => this.playPrevious()) : null,
+      this.queue && this.queue.length > 1 ? this.queueCtrl('next', 'Next', this.nextScene(), () => this.playNext()) : null,
     ]);
     this.title = h('div', { class: 'player-title' }, sceneTitle(this.scene));
     this.sourceLabel = h('div', { class: 'player-source' });
+    const queueLabel = this.queue && this.queue.length > 1
+      ? h('div', { class: 'player-source player-queue' }, `${this.queueIndex + 1} of ${this.queue.length}`)
+      : null;
 
     this.controls = h('div', { class: 'player-controls' }, [
-      h('div', { class: 'player-top' }, [this.title, this.sourceLabel]),
+      h('div', { class: 'player-top' }, [this.title, queueLabel, this.sourceLabel]),
       h('div', { class: 'player-bottom' }, [
         this.progress,
         h('div', { class: 'time-row' }, [this.timeNow, this.timeEnd]),
@@ -164,6 +174,20 @@ export class PlayerScreen extends Screen {
   /** A control button with an icon and a label under it. */
   ctrl(iconName, label, fn) {
     return h('div', { class: 'ctrl focusable', onSelect: fn }, [icon(iconName), h('span', { class: 'ctrl-label' }, label)]);
+  }
+
+  /**
+   * Previous / Next for a queue. At the start or end of the list the button
+   * is dimmed and skipped by the highlight (the row keeps its layout).
+   * @param {string} iconName
+   * @param {string} label
+   * @param {Object|null} target  the scene it goes to
+   * @param {Function} fn
+   */
+  queueCtrl(iconName, label, target, fn) {
+    const b = this.ctrl(iconName, label, () => { if (target) fn(); });
+    if (!target) b.classList.add('disabled');
+    return b;
   }
 
   // -------------------------------------------------------------------------
@@ -329,10 +353,13 @@ export class PlayerScreen extends Screen {
   /**
    * Accumulates Left/Right presses and seeks once they stop, so holding the
    * key scrubs smoothly instead of firing dozens of network seeks.
+   * @param {number} direction  1 forward, -1 back
+   * @param {number} [seconds]  step size (default: the skip settings)
    */
-  nudge(direction) {
+  nudge(direction, seconds) {
     const s = getSettings();
-    const step = direction > 0 ? s.skipForward : -s.skipBack;
+    // `seconds` (Channel up/down) overrides the skip settings.
+    const step = direction > 0 ? (seconds || s.skipForward) : -(seconds || s.skipBack);
     const base = this.seekTarget === null ? this.position() : this.seekTarget;
     const d = this.totalDuration();
     this.seekTarget = Math.max(0, d ? Math.min(base + step, d - 1) : base + step);
@@ -421,26 +448,6 @@ export class PlayerScreen extends Screen {
     }
   }
 
-  /** Jumps to the next (+1) or previous (-1) marker. */
-  jumpMarker(dir) {
-    if (!this.markers || !this.markers.length) return;
-    const pos = this.position();
-    let target = null;
-    if (dir > 0) target = this.markers.find((m) => m.seconds > pos + 1);
-    else {
-      for (let i = this.markers.length - 1; i >= 0; i -= 1) {
-        if (this.markers[i].seconds < pos - 3) {
-          target = this.markers[i];
-          break;
-        }
-      }
-    }
-    if (target) {
-      this.seekTo(target.seconds);
-      toast(this.markerLabel(target));
-    }
-  }
-
   async pickSubtitles() {
     const caps = this.scene.captions || [];
     const value = await chooseOption({
@@ -516,13 +523,32 @@ export class PlayerScreen extends Screen {
     return this.queue ? this.queue[this.queueIndex + 1] || null : null;
   }
 
+  /** The scene before this one in the queue, if any. */
+  previousScene() {
+    return this.queue ? this.queue[this.queueIndex - 1] || null : null;
+  }
+
   /** Replaces this player with one for the next queued scene. */
   playNext() {
+    this.playQueued(this.queueIndex + 1);
+  }
+
+  /** Replaces this player with one for the previous queued scene. */
+  playPrevious() {
+    this.playQueued(this.queueIndex - 1);
+  }
+
+  /**
+   * Replaces this player with one for another scene in the queue. Progress
+   * of this scene is saved by leaving the screen, as with Back.
+   * @param {number} index
+   */
+  playQueued(index) {
     clearTimeout(this.nextTimer);
-    const next = this.nextScene();
-    if (!next || this.destroyed) return;
-    this.router.replaceTop(new PlayerScreen(next, {
-      start: 0, queue: this.queue, queueIndex: this.queueIndex + 1,
+    const scene = this.queue ? this.queue[index] : null;
+    if (!scene || this.destroyed) return;
+    this.router.replaceTop(new PlayerScreen(scene, {
+      start: 0, queue: this.queue, queueIndex: index,
     }));
   }
 
@@ -705,10 +731,10 @@ export class PlayerScreen extends Screen {
         this.nudge(-1);
         return true;
       case KEY.CHANNEL_UP:
-        this.jumpMarker(1);
+        this.nudge(1, CHANNEL_SEEK_S);
         return true;
       case KEY.CHANNEL_DOWN:
-        this.jumpMarker(-1);
+        this.nudge(-1, CHANNEL_SEEK_S);
         return true;
       default:
         break;

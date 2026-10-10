@@ -1,6 +1,8 @@
 /**
- * Group page (Stash's "movies"): front cover, facts and synopsis, Play all,
- * back cover, sub-groups, and the group's scenes in running order.
+ * Group page (Stash's "movies"): front cover, facts and synopsis, Play all
+ * and Shuffle, back cover, sub-groups, and the group's scenes in running
+ * order. Play all follows the scene list's sort (running order unless
+ * another sort is picked).
  */
 import { Screen } from '../ui/router.js';
 import { h, icon } from '../util/dom.js';
@@ -16,9 +18,6 @@ import {
   countOf, formatDate, formatDuration, stars,
 } from '../util/format.js';
 
-/** Most scenes Play all queues up (groups are rarely anywhere near this). */
-const MAX_QUEUE = 200;
-
 export class GroupScreen extends Screen {
   /** @param {{id: string}} group */
   constructor(group) {
@@ -32,6 +31,7 @@ export class GroupScreen extends Screen {
       sorts: { scene: [api.GROUP_ORDER_SORT].concat(api.SCENE_SORTS) },
       initialSort: { scene: api.GROUP_ORDER_SORT.key },
       autofocus: false, // the header's main button gets the highlight
+      playButtons: false, // they're in the header
       filter: () => api.filters.group(this.group.id),
     });
     this.el.appendChild(this.header);
@@ -65,11 +65,10 @@ export class GroupScreen extends Screen {
       countOf(g.scene_count, 'scene'),
       rating ? `${rating} ★` : null,
     ].filter(Boolean);
+    const none = g.scene_count === 0 ? ' disabled' : '';
     const actions = [
-      h('div', {
-        class: 'button primary focusable' + (g.scene_count === 0 ? ' disabled' : ''),
-        onSelect: () => this.playAll(),
-      }, [icon('play'), 'Play all']),
+      h('div', { class: 'button primary focusable' + none, onSelect: () => this.collection.play(false) }, [icon('play'), 'Play all']),
+      h('div', { class: 'button ghost focusable' + none, onSelect: () => this.collection.play(true) }, [icon('shuffle'), 'Shuffle']),
     ];
     if (g.back_image_path) {
       actions.push(h('div', { class: 'button ghost focusable', onSelect: () => this.showCovers(1) }, [icon('image'), 'Back cover']));
@@ -127,22 +126,6 @@ export class GroupScreen extends Screen {
     const items = [asImage(g.front_image_path, `${g.name}, front`)];
     if (g.back_image_path) items.push(asImage(g.back_image_path, `${g.name}, back`));
     openItem('image', items[index] || items[0], { items, index: Math.min(index, items.length - 1) });
-  }
-
-  /** Plays every scene in group order, one after the other. */
-  async playAll() {
-    try {
-      const res = await api.findScenes({
-        perPage: MAX_QUEUE,
-        sort: api.GROUP_ORDER_SORT.key,
-        direction: 'ASC',
-        filter: api.filters.group(this.group.id),
-      });
-      if (!res.items.length) return;
-      openItem('player', res.items[0], { start: 0, queue: res.items, queueIndex: 0 });
-    } catch (err) {
-      toast(`Couldn't start playback: ${err.message}`, 'error');
-    }
   }
 
   focusDefault() {

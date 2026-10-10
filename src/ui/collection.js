@@ -4,12 +4,17 @@
  *
  * Used on performer, studio, tag, group and gallery pages, which all show
  * "the things that belong to X" with the same filter applied to each type.
+ *
+ * On the Scenes tab the toolbar also has Play all and Shuffle (see
+ * ui/playQueue.js): the tab's scenes, in its sort order or shuffled, played
+ * one after the other.
  */
 import { h, icon } from '../util/dom.js';
 import { Grid } from './grid.js';
 import { chooseOption } from './overlay.js';
 import { focusFirst } from '../nav/focus.js';
 import * as api from '../api/stash.js';
+import { playButtons, playScenes } from './playQueue.js';
 import { countOf } from '../util/format.js';
 
 /** Per content type: tab label, count noun, finder and sort options. */
@@ -41,6 +46,8 @@ export class Collection {
    * @param {Object<string, number>} [opts.counts]   per-type counts; types with 0 are hidden
    * @param {boolean} [opts.autofocus=true] highlight the first card when it loads
    *   (off on pages whose header has the main action, e.g. Play all)
+   * @param {boolean} [opts.playButtons=true] Play all / Shuffle on the Scenes
+   *   tab's toolbar (off when the page has them in its header, see play())
    */
   constructor(opts) {
     this.opts = opts;
@@ -60,11 +67,15 @@ export class Collection {
     });
     this.sortLabel = h('span');
     this.sortButton = h('div', { class: 'button ghost focusable', onSelect: () => this.pickSort() }, [icon('sort'), this.sortLabel]);
+    // Shown only while the Scenes tab is open (see switchTo).
+    this.playButtons = opts.playButtons !== false && opts.types.indexOf('scene') >= 0
+      ? playButtons((perPage, sortOverride) => this.query('scene', 1, perPage, sortOverride))
+      : [];
     this.gridHolder = h('div', { class: 'collection-grid' });
     this.el = h('div', { class: 'collection' }, [
       h('div', { class: 'entity-bar' }, [
         this.countEl,
-        h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, tabEls.concat([this.sortButton])),
+        h('div', { class: 'toolbar nav-group', 'data-no-memory': true }, tabEls.concat([this.sortButton], this.playButtons)),
       ]),
       this.gridHolder,
     ]);
@@ -103,6 +114,7 @@ export class Collection {
     this.type = type;
     const conf = CONTENT_TYPES[type];
     for (const t of Object.keys(this.tabs)) this.tabs[t].classList.toggle('on', t === type);
+    for (const b of this.playButtons) b.style.display = type === 'scene' ? '' : 'none';
 
     if (!this.sortByType[type]) {
       const sorts = this.sortsFor(type);
@@ -116,17 +128,40 @@ export class Collection {
       kind: type,
       emptyText: conf.empty,
       autofocus: focusGrid !== false,
-      fetchPage: (page, perPage) => {
-        const s = this.sortByType[type];
-        return conf.find({
-          page, perPage, sort: api.sortKey(s.key, this.seed), direction: s.direction, filter: this.opts.filter(type),
-        });
-      },
+      fetchPage: (page, perPage) => this.query(type, page, perPage),
       onCount: (n) => {
         this.countEl.textContent = countOf(n, conf.noun, conf.plural);
       },
     });
     this.gridHolder.appendChild(this.grid.el);
+  }
+
+  /**
+   * One page of a type, with the page's filter and the type's chosen sort.
+   * @param {string} type
+   * @param {number} page
+   * @param {number} perPage
+   * @param {{sort: string, direction: string}} [sortOverride]  used instead of
+   *   the chosen sort (Shuffle asks for a random order this way)
+   */
+  query(type, page, perPage, sortOverride) {
+    const s = this.sortByType[type];
+    return CONTENT_TYPES[type].find({
+      page,
+      perPage,
+      sort: sortOverride ? sortOverride.sort : api.sortKey(s.key, this.seed),
+      direction: sortOverride ? sortOverride.direction : s.direction,
+      filter: this.opts.filter(type),
+    });
+  }
+
+  /**
+   * Plays the scenes as a queue, in the Scenes tab's sort order or shuffled
+   * (for pages that put Play all in their header, e.g. a group).
+   * @param {boolean} [shuffle]
+   */
+  play(shuffle) {
+    return playScenes((perPage, sortOverride) => this.query('scene', 1, perPage, sortOverride), shuffle);
   }
 
   async pickSort() {

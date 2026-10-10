@@ -18,6 +18,7 @@ import {
 } from '../ui/overlay.js';
 import { canEdit } from '../ui/editor.js';
 import { runBulkAction } from '../ui/bulkActions.js';
+import { playButtons } from '../ui/playQueue.js';
 import {
   MODES, SECTION_MODES, convertFilter, deleteSavedFilter, findSavedFilters, resolveSavedFilter, saveFilter,
 } from '../api/savedFilters.js';
@@ -160,6 +161,9 @@ export class BrowseScreen extends Screen {
     });
     const extra = section === 'images'
       ? [h('div', { class: 'button ghost focusable', onSelect: () => this.slideshow() }, [icon('play'), h('span', null, 'Slideshow')])]
+      // Play all / Shuffle: the scenes of this view (filters, search, sort) as a queue.
+      : section === 'scenes'
+      ? playButtons((perPage, sortOverride) => this.fetch(1, perPage, sortOverride))
       : section === 'tags'
       ? [h('div', {
         class: 'button ghost toggle focusable' + (getSettings().showTagImages ? '' : ' on'),
@@ -250,16 +254,28 @@ export class BrowseScreen extends Screen {
     return filter;
   }
 
-  /** Builds the query for one page from the criteria, saved filter, sort and toggles. */
-  async fetch(page, perPage) {
+  /**
+   * Builds the query for one page from the criteria, saved filter, sort and toggles.
+   * @param {number} page
+   * @param {number} perPage
+   * @param {{sort: string, direction: string}} [sortOverride]  used instead of
+   *   the view's sort (Shuffle asks for a random order this way)
+   */
+  async fetch(page, perPage, sortOverride) {
     const filter = await this.currentFilter();
     // A saved filter brings its own sort until the user picks another one.
     const useSavedSort = this.saved && this.saved.query.sort && !this.sortChosen;
+    let sort = useSavedSort ? this.saved.query.sort : api.sortKey(this.sort.key, this.seed);
+    let direction = useSavedSort ? this.saved.query.direction : this.sort.direction;
+    if (sortOverride) {
+      sort = sortOverride.sort;
+      direction = sortOverride.direction;
+    }
     return this.config.find({
       page,
       perPage,
-      sort: useSavedSort ? this.saved.query.sort : api.sortKey(this.sort.key, this.seed),
-      direction: useSavedSort ? this.saved.query.direction : this.sort.direction,
+      sort,
+      direction,
       q: this.query || undefined,
       filter,
     });
