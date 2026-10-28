@@ -47,6 +47,10 @@ const SAVE_EVERY_S = 30;
 const START_TIMEOUT_MS = 20000;
 /** Seconds Channel up/down jump forward/back. */
 const CHANNEL_SEEK_S = 60;
+/** How long after a seek the position is checked (see verifySeek). */
+const SEEK_CHECK_MS = 2000;
+/** Seconds a seek may land away from its target (keyframes) and still count. */
+const SEEK_TOLERANCE_S = 10;
 
 export class PlayerScreen extends Screen {
   /**
@@ -79,6 +83,7 @@ export class PlayerScreen extends Screen {
 
     this.seekTarget = null;
     this.seekTimer = null;
+    this.verifyTimer = null;
     this.hideTimer = null;
     this.startTimer = null;
     this.subtitleUrl = null;
@@ -237,6 +242,7 @@ export class PlayerScreen extends Screen {
     document.removeEventListener('visibilitychange', this.onVisibility);
     clearTimeout(this.hideTimer);
     clearTimeout(this.seekTimer);
+    clearTimeout(this.verifyTimer);
     clearTimeout(this.startTimer);
     clearTimeout(this.nextTimer);
     // Release the hardware decoder right away; TVs only have one or two.
@@ -266,13 +272,16 @@ export class PlayerScreen extends Screen {
     this.el.classList.remove('failed');
     this.el.classList.add('buffering');
     this.lastPos = null;
+    clearTimeout(this.verifyTimer);
 
     const v = this.video;
     v.src = withStart(this.source, at);
     if (this.source.type !== 'progressive' && at > 0) {
       const seekWhenReady = () => {
         v.removeEventListener('loadedmetadata', seekWhenReady);
+        if (this.destroyed) return;
         try { v.currentTime = at; } catch (e) { /* ignore */ }
+        this.verifySeek(at);
       };
       v.addEventListener('loadedmetadata', seekWhenReady);
     }
@@ -341,9 +350,58 @@ export class PlayerScreen extends Screen {
       this.play(this.sourceIndex, target); // live transcode: restart at target
     } else {
       this.video.currentTime = target;
+      this.verifySeek(target);
     }
     this.lastPos = null; // a jump is not watching
     this.drawTime(target);
+  }
+
+  /**
+   * Checks that a seek really landed. Some files can't be seeked when played
+   * directly (an MP4 with its index at the end, an MKV without cues): the TV
+   * then quietly starts again from 0. The seek is tried once more, then the
+   * player switches to a transcode that starts at the target.
+   * @param {number} target  seconds
+   * @param {boolean} [retried]
+   */
+  verifySeek(target, retried) {
+    clearTimeout(this.verifyTimer);
+    if (target < SEEK_TOLERANCE_S) return; // can't tell a failed seek from a short one
+    const started = Date.now();
+    const check = () => {
+      if (this.destroyed) return;
+      const v = this.video;
+      if (v.seeking || v.readyState < 2) {
+        if (Date.now() - started < START_TIMEOUT_MS) this.verifyTimer = setTimeout(check, 500);
+        return;
+      }
+      if (Math.abs(this.position() - target) <= SEEK_TOLERANCE_S) return;
+      if (!retried) {
+        try { v.currentTime = target; } catch (e) { /* ignore */ }
+        this.verifySeek(target, true);
+        return;
+      }
+      this.seekFailed(target);
+    };
+    this.verifyTimer = setTimeout(check, SEEK_CHECK_MS);
+  }
+
+  /** The source can't seek: carries on from `target` with the next one that can. */
+  seekFailed(target) {
+    const type = this.source.type;
+    let index = -1;
+    for (let i = 0; i < this.sources.length; i++) {
+      if (i !== this.sourceIndex && this.sources[i].type !== type) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) {
+      toast("This video can't jump to that point on this TV.", 'error');
+      return;
+    }
+    toast(`Can't jump in ${this.source.label}. Switching to ${this.sources[index].label}.`);
+    this.play(index, target);
   }
 
   seekBy(delta) {

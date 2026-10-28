@@ -55,7 +55,7 @@ If you enjoy it, please consider [buying me a Ko-fi](https://ko-fi.com/pustal).
   - more server settings: paths and files (folders can be browsed), previews and sprites, the web interface's options, DLNA (settings, start/stop now), scraping, log settings and a log viewer, database backup and optimise, session length. These panels are built from Stash's schema, so options added in newer Stash versions show up too; grouped options (such as the web UI's image lightbox) open a panel of their own.
 - **Search** covers scenes, groups, galleries, performers, studios, images and tags together.
 - **Player**:
-  - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically.
+  - Plays the original file whenever the TV can decode it, so Stash doesn't have to transcode. Otherwise it uses an HLS transcode, and if a source fails it moves on to the next one automatically. Some files can't be seeked when played directly (an MP4 with its index at the end, an MKV without cues); when a jump or the resume point doesn't land, the player switches to a transcode that starts there.
   - Seek thumbnails come from Stash's sprite sheets.
   - Channel Up/Down jump a minute forward/back (presses add up, like Left/Right).
   - When playing a list (Play all or Shuffle), **Previous** and **Next** in the controls move through it, the top shows the position ("3 of 20"), and the next scene starts by itself a few seconds after one ends.
