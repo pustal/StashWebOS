@@ -17,6 +17,7 @@ import { closeTopModal, confirmDialog, hasModal } from './ui/overlay.js';
 import { initImageCache } from './cache/imageCache.js';
 import { getSettings } from './settings.js';
 import { resume } from './session.js';
+import { unlock } from './ui/pinLock.js';
 
 import { HomeScreen } from './screens/home.js';
 import { BrowseScreen } from './screens/browse.js';
@@ -142,8 +143,15 @@ document.addEventListener('keydown', (e) => {
 // Start
 // ---------------------------------------------------------------------------
 
+// With a PIN set, the lock screen comes back whenever the app returns from
+// the background (the player pauses itself when hidden).
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) unlock();
+});
+
 async function start() {
   const s = getSettings();
+  await unlock();
   await initImageCache({ budgetBytes: s.cacheBudgetMB * 1024 * 1024, keepAnimated: s.animatedThumbs });
   if (!s.serverUrl) {
     showSetup();

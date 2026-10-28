@@ -73,6 +73,8 @@ export const DEFAULTS = {
   slideshowSeconds: 5,
   /** Show the scrubbing thumbnails (sprite sheet) while seeking. */
   seekPreview: true,
+  /** 4-digit PIN asked for on start and after the background; empty = no lock (see ui/pinLock.js). */
+  pin: '',
 };
 
 let current = load();

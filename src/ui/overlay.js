@@ -27,13 +27,15 @@ export function hasModal() {
  * Opens a modal panel (exported for custom panels such as the editor).
  * The panel is focus-trapped until closed.
  * @param {HTMLElement} panel
- * @param {{side?: boolean, onDismiss?: () => void}} [opts]
- *   side=true slides in from the right; onDismiss runs when Back closes it
+ * @param {{side?: boolean, onDismiss?: () => void, persistent?: boolean, className?: string}} [opts]
+ *   side=true slides in from the right; onDismiss runs when Back closes it;
+ *   persistent=true keeps the modal open on Back (onDismiss still runs);
+ *   className is added to the scrim
  * @returns {() => void} close function (does not call onDismiss)
  */
 export function openModal(panel, opts) {
   const o = opts || {};
-  const scrim = h('div', { class: 'modal-scrim no-scroll' + (o.side ? ' side' : '') }, panel);
+  const scrim = h('div', { class: 'modal-scrim no-scroll' + (o.side ? ' side' : '') + (o.className ? ` ${o.className}` : '') }, panel);
   document.body.appendChild(scrim);
   let closed = false;
   let popLayer = null;
@@ -46,7 +48,7 @@ export function openModal(panel, opts) {
     if (popLayer) popLayer();
   };
   const dismiss = () => {
-    close();
+    if (!o.persistent) close();
     if (o.onDismiss) o.onDismiss();
   };
   openModals.push(dismiss);

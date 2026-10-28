@@ -47,6 +47,7 @@ If you enjoy it, please consider [buying me a Ko-fi](https://ko-fi.com/pustal).
   - **several items at once**: in a browse screen, **Select** turns on selection mode (OK picks cards, Back ends it); **Actions** can select every result (all pages, not just the loaded cards), then add or remove a tag, set the rating, mark them organized or favourite, or delete them
 
   Settings → Editing → Off hides every Edit button (and the library tasks below), for a view-only TV.
+- **PIN lock** (Settings → PIN lock): a 4-digit PIN asked for when the app opens and when it comes back from the background, typed with the remote's number keys or the on-screen keypad. After five wrong PINs it waits 30 seconds. It keeps children and guests out; it is not encryption.
 - **Library tasks** (Settings → Library tasks): Scan for new files, Generate, Auto tag, Identify and Clean, with a live status line and Stop. **Task options** sets what Scan and Generate do and Identify's sources (saved in Stash, shared with its Tasks page). **Scrapers** installs, updates and removes scraper packages; **Stash-box servers** adds and removes servers such as StashDB.
 - **Stash server** settings (Settings → Stash server):
   - library folders (add one by browsing the server's folders, choose videos/images, remove), transcode sizes, hardware acceleration and parallel tasks

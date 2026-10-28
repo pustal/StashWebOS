@@ -21,6 +21,7 @@ import {
 import { openScrapers, openStashBoxes, openTaskOptions } from '../ui/libraryPanels.js';
 import { checkStashUpdate, serverSettingsLines } from '../ui/serverSettings.js';
 import { showLink } from '../ui/linkDialog.js';
+import { PIN_LENGTH, askPin } from '../ui/pinLock.js';
 
 /* global __APP_VERSION__ */
 
@@ -245,6 +246,8 @@ export class SettingsScreen extends Screen {
         this.choice('Editing', 'allowEditing',
           [{ value: true, label: 'On' }, { value: false, label: 'Off (view only)' }],
           'Ratings, favourites, tags and other links, markers and saved filters.'),
+        this.line('PIN lock', () => (getSettings().pin ? 'On' : 'Off'), (valueEl) => this.editPin(valueEl),
+          'Asks for a PIN when the app opens or comes back from the background.'),
       ].concat(this.taskLines(), [
         h('h2', { class: 'settings-heading' }, 'About'),
         h('p', { class: 'about-text' }, `Stash for webOS ${__APP_VERSION__}. An unofficial client for Stash.`),
@@ -263,6 +266,37 @@ export class SettingsScreen extends Screen {
       ])),
     ]));
     this.refreshUsage();
+  }
+
+  /** Sets, changes or removes the PIN (the current one is asked for first). */
+  async editPin(valueEl) {
+    const current = getSettings().pin;
+    if (current) {
+      const ok = await askPin({ title: 'Current PIN', check: (pin) => pin === current });
+      if (ok === undefined) return;
+      const action = await chooseOption({
+        title: 'PIN lock',
+        options: [{ label: 'Change PIN', value: 'change' }, { label: 'Turn off', value: 'off' }],
+      });
+      if (action === undefined) return;
+      if (action === 'off') {
+        updateSettings({ pin: '' });
+        valueEl.textContent = 'Off';
+        toast('PIN lock turned off');
+        return;
+      }
+    }
+    const pin = await askPin({ title: 'New PIN', message: `Choose ${PIN_LENGTH} digits.` });
+    if (pin === undefined) return;
+    const again = await askPin({ title: 'Repeat the PIN' });
+    if (again === undefined) return;
+    if (again !== pin) {
+      toast("The PINs didn't match. Nothing was changed.", 'error');
+      return;
+    }
+    updateSettings({ pin });
+    valueEl.textContent = 'On';
+    toast('PIN lock on');
   }
 
   refreshUsage() {

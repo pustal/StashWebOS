@@ -1642,3 +1642,79 @@ body.no-sidebar .content {
   font-weight: 600;
   word-break: break-all;
 }
+
+/* PIN lock (ui/pinLock.js) */
+.modal-scrim.pin-lock {
+  background: var(--bg);
+}
+.pin-panel {
+  width: 30rem;
+  text-align: center;
+}
+.pin-brand {
+  display: block;
+  width: 5rem;
+  height: 5rem;
+  margin: 0 auto 1.5rem;
+}
+.pin-message {
+  min-height: 2rem;
+}
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0 2rem;
+}
+.pin-dot {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0 0.75rem;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--muted);
+}
+.pin-dot.filled {
+  background: var(--brass);
+  box-shadow: none;
+}
+.pin-pad {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 21rem;
+  margin: 0 auto;
+}
+.pin-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.5rem;
+  height: 4.5rem;
+  margin: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-family: var(--display);
+  font-size: 2rem;
+  font-weight: 600;
+}
+.pin-key .icon {
+  width: 2rem;
+  height: 2rem;
+}
+.pin-key.focused {
+  background: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: 0 0 0 0.25rem rgba(232, 185, 96, 0.35);
+}
+.pin-blank {
+  background: transparent;
+}
+.pin-waiting .pin-pad {
+  opacity: 0.4;
+}
+.pin-wrong .pin-dots {
+  animation: pin-shake 0.4s;
+}
+@keyframes pin-shake {
+  20%, 60% { -webkit-transform: translateX(-0.75rem); transform: translateX(-0.75rem); }
+  40%, 80% { -webkit-transform: translateX(0.75rem); transform: translateX(0.75rem); }
+}
