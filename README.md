@@ -130,7 +130,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_1.1.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_1.2.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
