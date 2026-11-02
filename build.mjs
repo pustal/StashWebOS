@@ -34,6 +34,9 @@ mkdirSync('dist', { recursive: true });
 /** Copies the files that don't need bundling into dist/. */
 function copyStatic() {
   for (const f of ['index.html', 'appinfo.json']) cpSync(f, `dist/${f}`);
+  // The app's licence and the third-party licence texts ship with the app.
+  for (const f of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) cpSync(f, `dist/${f}`);
+  cpSync('licenses', 'dist/licenses', { recursive: true });
   // assets/icons/source holds the original logo; only the generated sizes ship.
   cpSync('assets/icons', 'dist/icons', { recursive: true, filter: (src) => !/[\\/]source([\\/]|$)/.test(src) });
 }

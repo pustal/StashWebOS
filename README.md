@@ -130,7 +130,7 @@ A service is needed because a web app can't keep a Stash login session (Stash's 
 With root access you don't need Developer Mode. Build the package with `npm run package`, then either register the TV with `npx ares-setup-device` using port `22`, user `root` and your SSH key (after that the `tv:*` scripts work), or install over SSH:
 
 ```sh
-scp out/org.stashwebos.app_1.2.0_all.ipk root@<TV_IP>:/tmp/stash.ipk
+scp out/org.stashwebos.app_1.2.1_all.ipk root@<TV_IP>:/tmp/stash.ipk
 ssh root@<TV_IP> "luna-send -i -f luna://com.webos.appInstallService/dev/install '{\"id\":\"com.ares.defaultName\",\"ipkUrl\":\"/tmp/stash.ipk\",\"subscribe\":true}'"
 ```
 
@@ -220,6 +220,10 @@ Stash saves filters in its web UI's format, not the format its API accepts. [`sr
 Everything from earlier lists is now in the app. One thing is out of reach:
 
 - Restarting, shutting down or updating Stash itself: Stash's API has no way to do that, so it's done on the server (the app can tell you when a newer version is out)
+
+## Licence
+
+Stash for webOS is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only), like Stash itself. Third-party components and their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); the app carries the same files.
 
 ## Support
 
